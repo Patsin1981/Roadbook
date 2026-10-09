@@ -1,0 +1,306 @@
+/* Rally Roadbook core — pure functions, no DOM. Works in browser (window.RB) and node (module.exports). */
+(function (root) {
+  'use strict';
+  var R = 6371008.8, D2R = Math.PI / 180;
+
+  function hav(a, b) {
+    var dLat = (b[0] - a[0]) * D2R, dLon = (b[1] - a[1]) * D2R;
+    var s = Math.sin(dLat / 2), t = Math.sin(dLon / 2);
+    var h = s * s + Math.cos(a[0] * D2R) * Math.cos(b[0] * D2R) * t * t;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  function bearing(a, b) {
+    var p1 = a[0] * D2R, p2 = b[0] * D2R, dl = (b[1] - a[1]) * D2R;
+    var y = Math.sin(dl) * Math.cos(p2);
+    var x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+    return (Math.atan2(y, x) / D2R + 360) % 360;
+  }
+
+  function normAngle(a) { a = ((a + 180) % 360 + 360) % 360 - 180; return a === -180 ? 180 : a; }
+
+  // Drop consecutive points closer than minGap metres (GPS jitter while stopped inflates distance)
+  function cleanTrack(pts, minGap) {
+    minGap = minGap == null ? 2 : minGap;
+    var out = [];
+    for (var i = 0; i < pts.length; i++) {
+      var p = pts[i];
+      if (!isFinite(p[0]) || !isFinite(p[1])) continue;
+      if (!out.length || hav(out[out.length - 1], p) >= minGap) out.push([+p[0].toFixed(7), +p[1].toFixed(7)]);
+    }
+    if (pts.length > 1 && out.length) {
+      var last = pts[pts.length - 1], ol = out[out.length - 1];
+      if (ol[0] !== last[0] || ol[1] !== last[1]) { if (hav(ol, last) > 0.2) out.push([+last[0].toFixed(7), +last[1].toFixed(7)]); }
+    }
+    return out;
+  }
+
+  function buildCum(track) {
+    var c = new Float64Array(track.length);
+    for (var i = 1; i < track.length; i++) c[i] = c[i - 1] + hav(track[i - 1], track[i]);
+    return c;
+  }
+
+  // largest index i with cum[i] <= d
+  function idxAt(cum, d) {
+    var lo = 0, hi = cum.length - 1;
+    if (d <= 0) return 0;
+    if (d >= cum[hi]) return Math.max(0, hi - 1);
+    while (hi - lo > 1) { var m = (lo + hi) >> 1; if (cum[m] <= d) lo = m; else hi = m; }
+    return lo;
+  }
+
+  function pointAt(track, cum, d) {
+    if (track.length === 1) return track[0].slice();
+    var i = idxAt(cum, d), seg = cum[i + 1] - cum[i];
+    var f = seg > 0 ? Math.max(0, Math.min(1, (d - cum[i]) / seg)) : 0;
+    var a = track[i], b = track[i + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  }
+
+  // Project lat/lon onto track between indices i0..i1. Returns {d, off, lat, lon, i}
+  function project(track, cum, lat, lon, i0, i1) {
+    var n = track.length;
+    if (n === 0) return null;
+    if (n === 1) return { d: 0, off: hav(track[0], [lat, lon]), lat: track[0][0], lon: track[0][1], i: 0 };
+    i0 = Math.max(0, i0 || 0); i1 = Math.min(n - 2, i1 == null ? n - 2 : i1);
+    var kx = Math.cos(lat * D2R) * R * D2R, ky = R * D2R;
+    var best = null;
+    for (var i = i0; i <= i1; i++) {
+      var a = track[i], b = track[i + 1];
+      var ax = (a[1] - lon) * kx, ay = (a[0] - lat) * ky, bx = (b[1] - lon) * kx, by = (b[0] - lat) * ky;
+      var dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+      var t = L2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+      var px = ax + dx * t, py = ay + dy * t, dist2 = px * px + py * py;
+      if (!best || dist2 < best.d2) best = { d2: dist2, i: i, t: t };
+    }
+    var A = track[best.i], B = track[best.i + 1];
+    var plat = A[0] + (B[0] - A[0]) * best.t, plon = A[1] + (B[1] - A[1]) * best.t;
+    return { d: cum[best.i] + (cum[best.i + 1] - cum[best.i]) * best.t, off: Math.sqrt(best.d2), lat: plat, lon: plon, i: best.i };
+  }
+
+  // Turn angle at distance d, measured with bearings over +-win metres. Positive = right.
+  function angleAt(track, cum, d, win) {
+    win = win || 30;
+    var total = cum[cum.length - 1];
+    if (total < 2 * win) return 0;
+    var dd = Math.max(win, Math.min(total - win, d));
+    var p0 = pointAt(track, cum, dd - win), p1 = pointAt(track, cum, dd), p2 = pointAt(track, cum, dd + win);
+    return normAngle(bearing(p1, p2) - bearing(p0, p1));
+  }
+
+  // Find candidate turns: |angle| >= threshold, keep peak within each cluster, min separation sep metres.
+  function detectTurns(track, cum, opts) {
+    opts = opts || {};
+    var thr = opts.threshold || 35, win = opts.win || 30, step = opts.step || 5, sep = opts.sep || 80;
+    var total = cum[cum.length - 1], res = [];
+    if (!track.length || total < 2 * win + step) return res;
+    var cur = null;
+    for (var d = win; d <= total - win; d += step) {
+      var a = angleAt(track, cum, d, win);
+      if (Math.abs(a) >= thr) {
+        if (cur && d - cur.end <= step * 2 && Math.sign(a) === Math.sign(cur.angle)) {
+          cur.end = d; if (Math.abs(a) > Math.abs(cur.angle)) { cur.angle = a; cur.d = d; }
+        } else { if (cur) res.push(cur); cur = { d: d, angle: a, end: d }; }
+      } else if (cur && d - cur.end > step * 2) { res.push(cur); cur = null; }
+    }
+    if (cur) res.push(cur);
+    var out = [];
+    res.forEach(function (r) {
+      var prev = out[out.length - 1];
+      if (prev && r.d - prev.d < sep) { if (Math.abs(r.angle) > Math.abs(prev.angle)) out[out.length - 1] = r; }
+      else out.push(r);
+    });
+    return out.map(function (r) {
+      var p = pointAt(track, cum, r.d);
+      return { d: r.d, angle: Math.round(r.angle / 5) * 5, lat: p[0], lon: p[1] };
+    });
+  }
+
+  // ---------- GPX ----------
+  function attr(s, name) {
+    var m = new RegExp('\\b' + name + '\\s*=\\s*["\']([^"\']+)["\']').exec(s);
+    return m ? parseFloat(m[1]) : NaN;
+  }
+  function tagText(s, tag) {
+    var m = new RegExp('<' + tag + '\\b[^>]*>([\\s\\S]*?)</' + tag + '>').exec(s);
+    return m ? m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
+  }
+  function pointsOf(block, tag) {
+    var re = new RegExp('<' + tag + '\\b([^>]*)>', 'g'), m, pts = [];
+    while ((m = re.exec(block))) {
+      var la = attr(m[1], 'lat'), lo = attr(m[1], 'lon');
+      if (isFinite(la) && isFinite(lo)) pts.push([la, lo]);
+    }
+    return pts;
+  }
+  // Returns {tracks:[{name, pts}], waypoints:[{name, lat, lon}]}
+  function parseGPX(text) {
+    var tracks = [], wpts = [], m;
+    var reTrk = /<trk\b[^>]*>([\s\S]*?)<\/trk>/g;
+    while ((m = reTrk.exec(text))) {
+      var body = m[1];
+      var nm = tagText(body.replace(/<trkseg[\s\S]*$/, ''), 'name');
+      var pts = pointsOf(body, 'trkpt');
+      if (pts.length > 1) tracks.push({ name: nm, pts: pts });
+    }
+    var reRte = /<rte\b[^>]*>([\s\S]*?)<\/rte>/g;
+    while ((m = reRte.exec(text))) {
+      var rb = m[1], rp = pointsOf(rb, 'rtept');
+      if (rp.length > 1) tracks.push({ name: tagText(rb.replace(/<rtept[\s\S]*$/, ''), 'name'), pts: rp });
+    }
+    var reW = /<wpt\b([^>]*)>([\s\S]*?)<\/wpt>/g;
+    while ((m = reW.exec(text))) {
+      var la = attr(m[1], 'lat'), lo = attr(m[1], 'lon');
+      if (isFinite(la) && isFinite(lo)) wpts.push({ name: tagText(m[2], 'name'), lat: la, lon: lo });
+    }
+    return { tracks: tracks, waypoints: wpts };
+  }
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  // ---------- Directions ----------
+  var PRESETS = [
+    { a: -135, th: 'เลี้ยวซ้ายหักศอก', en: 'Sharp left' },
+    { a: -90, th: 'เลี้ยวซ้าย', en: 'Turn left' },
+    { a: -45, th: 'เฉียงซ้าย', en: 'Bear left' },
+    { a: -20, th: 'ชิดซ้าย', en: 'Keep left' },
+    { a: 0, th: 'ตรงไป', en: 'Straight on' },
+    { a: 20, th: 'ชิดขวา', en: 'Keep right' },
+    { a: 45, th: 'เฉียงขวา', en: 'Bear right' },
+    { a: 90, th: 'เลี้ยวขวา', en: 'Turn right' },
+    { a: 135, th: 'เลี้ยวขวาหักศอก', en: 'Sharp right' },
+    { a: 180, th: 'กลับรถ', en: 'U-turn' }
+  ];
+  function nearestPreset(angle) {
+    if (angle == null) return null;
+    var best = PRESETS[0];
+    PRESETS.forEach(function (p) { if (Math.abs(normAngle(angle - p.a)) < Math.abs(normAngle(angle - best.a))) best = p; });
+    return best;
+  }
+
+  // Tulip SVG. angle: 0 = straight, + = right, 180 = U-turn, null = no arrow (entry only)
+  function tulipSVG(angle, branches, opts) {
+    opts = opts || {};
+    var size = opts.size || 64, ink = opts.ink || '#000', w = opts.stroke || 6;
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" width="' + size + '" height="' + size + '" aria-hidden="true">';
+    (branches || []).forEach(function (b) {
+      var x = Math.sin(b * D2R) * 34, y = -Math.cos(b * D2R) * 34;
+      s += '<line x1="0" y1="0" x2="' + x.toFixed(1) + '" y2="' + y.toFixed(1) + '" stroke="' + ink + '" stroke-width="' + (w * 0.45) + '" stroke-linecap="round"/>';
+    });
+    s += '<circle cx="0" cy="40" r="' + (w * 0.9) + '" fill="' + ink + '"/>';
+    if (angle == null) {
+      s += '<line x1="0" y1="40" x2="0" y2="0" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="round"/>';
+    } else if (Math.abs(angle) >= 170) {
+      s += '<path d="M0,40 L0,-12 A13,13 0 0 0 -26,-12 L-26,22" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round"/>';
+      s += '<path d="M-36,16 L-26,34 L-16,16 Z" fill="' + ink + '"/>';
+    } else {
+      var r = 38, ex = Math.sin(angle * D2R) * r, ey = -Math.cos(angle * D2R) * r;
+      var ax = Math.sin(angle * D2R), ay = -Math.cos(angle * D2R), px = -ay, py = ax, h = 13, hw = 9;
+      var bx = ex - ax * h, by = ey - ay * h;
+      s += '<polyline points="0,40 0,0 ' + bx.toFixed(1) + ',' + by.toFixed(1) + '" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round"/>';
+      s += '<path d="M' + ex.toFixed(1) + ',' + ey.toFixed(1) + ' L' + (bx + px * hw).toFixed(1) + ',' + (by + py * hw).toFixed(1) + ' L' + (bx - px * hw).toFixed(1) + ',' + (by - py * hw).toFixed(1) + ' Z" fill="' + ink + '"/>';
+    }
+    return s + '</svg>';
+  }
+
+  // ---------- TSD ----------
+  // segs: [{fromKm, kmh}] (roadbook km). Ideal elapsed seconds to reach km.
+  function tsdIdeal(segs, km) {
+    if (!segs || !segs.length) return null;
+    var s = segs.slice().filter(function (x) { return x.kmh > 0; }).sort(function (a, b) { return a.fromKm - b.fromKm; });
+    if (!s.length || km < s[0].fromKm) return 0;
+    var t = 0;
+    for (var i = 0; i < s.length; i++) {
+      var from = s[i].fromKm, to = i + 1 < s.length ? s[i + 1].fromKm : Infinity;
+      if (km <= from) break;
+      var seg = Math.min(km, to) - from;
+      t += seg / s[i].kmh * 3600;
+    }
+    return t;
+  }
+  function tsdSpeedAt(segs, km) {
+    var cur = null;
+    (segs || []).slice().sort(function (a, b) { return a.fromKm - b.fromKm; }).forEach(function (x) { if (km >= x.fromKm - 1e-9) cur = x; });
+    return cur ? cur.kmh : null;
+  }
+
+  // ---------- Map matching for navigator ----------
+  function Matcher(track, cum, opts) {
+    this.track = track; this.cum = cum; this.o = opts || {};
+    this.maxOff = this.o.maxOff || 40; this.maxAcc = this.o.maxAcc || 50;
+    this.d = null; this.pending = null; this.offRoute = false;
+  }
+  Matcher.prototype.reset = function () { this.d = null; this.pending = null; this.offRoute = false; };
+  Matcher.prototype.update = function (lat, lon, acc, speed) {
+    var tr = this.track, cum = this.cum;
+    if (tr.length < 2) return null;
+    if (acc != null && acc > this.maxAcc) return { d: this.d, poor: true, offRoute: this.offRoute };
+    var r = null;
+    if (this.d != null) {
+      var ahead = Math.max(500, (speed || 0) * 15);
+      var i0 = idxAt(cum, this.d - 150), i1 = idxAt(cum, this.d + ahead) + 1;
+      r = project(tr, cum, lat, lon, i0, i1);
+      if (r.off <= this.maxOff) { this.d = r.d; this.pending = null; this.offRoute = false; return { d: r.d, off: r.off, lat: r.lat, lon: r.lon, offRoute: false }; }
+    }
+    var g = project(tr, cum, lat, lon);
+    if (g.off <= this.maxOff) {
+      if (this.d == null) { this.d = g.d; this.offRoute = false; return { d: g.d, off: g.off, lat: g.lat, lon: g.lon, offRoute: false, relocated: true }; }
+      // relocation needs 2 consecutive agreeing fixes (avoid jumping to a parallel/overlapping part)
+      if (this.pending != null && Math.abs(g.d - this.pending) < 200) {
+        this.d = g.d; this.pending = null; this.offRoute = false;
+        return { d: g.d, off: g.off, lat: g.lat, lon: g.lon, offRoute: false, relocated: true };
+      }
+      this.pending = g.d;
+    }
+    this.offRoute = true;
+    return { d: this.d, off: (r || g).off, offRoute: true };
+  };
+
+  // ---------- Export ----------
+  function csvCell(v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function typeLabel(p) {
+    if (p.type === 'DANGER') return 'DANGER ' + '!'.repeat(p.danger || 1);
+    return p.type;
+  }
+  function stageCSV(stage) {
+    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Lat', 'Lon']];
+    var prev = 0;
+    sortedPoints(stage).forEach(function (p, i) {
+      var km = p.d * f / 1000;
+      rows.push([stage.name, i + 1, km.toFixed(2), (km - prev).toFixed(2), typeLabel(p), p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', p.lat.toFixed(6), p.lon.toFixed(6)]);
+      prev = km;
+    });
+    return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
+  }
+  function sortedPoints(stage) { return (stage.points || []).slice().sort(function (a, b) { return a.d - b.d; }); }
+  function stageGPX(stages) {
+    var s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rally Roadbook" xmlns="http://www.topografix.com/GPX/1/1">\n';
+    stages.forEach(function (st) {
+      var f = st.factor || 1;
+      sortedPoints(st).forEach(function (p, i) {
+        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(st.name + ' #' + (i + 1) + ' ' + typeLabel(p)) + '</name><desc>' + esc((p.d * f / 1000).toFixed(2) + ' km ' + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
+      });
+    });
+    stages.forEach(function (st) {
+      s += '<trk><name>' + esc(st.name) + '</name><trkseg>\n';
+      st.track.forEach(function (p) { s += '<trkpt lat="' + p[0] + '" lon="' + p[1] + '"/>\n'; });
+      s += '</trkseg></trk>\n';
+    });
+    return s + '</gpx>\n';
+  }
+  function logGPX(name, log) {
+    var s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rally Roadbook" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>' + esc(name) + '</name><trkseg>\n';
+    log.forEach(function (p) { s += '<trkpt lat="' + p[0].toFixed(7) + '" lon="' + p[1].toFixed(7) + '"><time>' + new Date(p[2]).toISOString() + '</time></trkpt>\n'; });
+    return s + '</trkseg></trk>\n</gpx>\n';
+  }
+
+  var api = {
+    hav: hav, bearing: bearing, normAngle: normAngle, cleanTrack: cleanTrack, buildCum: buildCum, idxAt: idxAt,
+    pointAt: pointAt, project: project, angleAt: angleAt, detectTurns: detectTurns, parseGPX: parseGPX,
+    PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
+    Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
+    typeLabel: typeLabel, esc: esc
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
+})(this);

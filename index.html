@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFE14D">
+<title>Rally Roadbook</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="mode-org">
+
+<header class="bar">
+  <div class="mode" role="tablist" aria-label="โหมด">
+    <button role="tab" data-mode="org" aria-selected="true">วางเส้นทาง</button>
+    <button role="tab" data-mode="nav" aria-selected="false">นำทาง</button>
+  </div>
+  <select id="stageSel" aria-label="เลือก stage"></select>
+</header>
+
+<main>
+  <!-- Navigator dashboard -->
+  <section id="dash" aria-live="off">
+    <div class="trip">
+      <div class="trip-cell" id="totalCell">
+        <span class="lbl">ระยะรวม km</span>
+        <span class="big" id="dTotal">--.--</span>
+      </div>
+      <button class="trip-cell partial" id="partialCell" title="แตะเพื่อตั้งศูนย์ช่วง">
+        <span class="lbl">ช่วง km</span>
+        <span class="mid" id="dPartial">-.--</span>
+      </button>
+    </div>
+    <div class="status" id="dStatus">
+      <span id="dGps">GPS ปิด</span><span id="dSpeed">-- km/h</span><span id="dRec"></span>
+    </div>
+    <div class="offroute" id="dOff" hidden>ออกนอกเส้นทาง <span id="dOffM"></span></div>
+
+    <div class="rb-box next" id="dNext">
+      <div class="rb-km"><span class="to" id="dNextIn">--</span><span class="at" id="dNextKm"></span></div>
+      <div class="rb-tulip" id="dNextTulip"></div>
+      <div class="rb-text" id="dNextText">ยังไม่มีจุดถัดไป</div>
+    </div>
+    <div class="rb-box then" id="dThen">
+      <div class="rb-km"><span class="at" id="dThenKm"></span></div>
+      <div class="rb-tulip" id="dThenTulip"></div>
+      <div class="rb-text" id="dThenText"></div>
+    </div>
+
+    <div class="tsd" id="dTsd" hidden>
+      <div><span class="lbl">TSD</span><span class="tsd-d" id="dTsdDelta">--</span></div>
+      <div class="tsd-side"><span id="dTsdSpeed">--</span><span id="dTsdElapsed">--</span></div>
+    </div>
+
+    <div class="ctl">
+      <button id="bGps" class="primary">เริ่ม GPS</button>
+      <button id="bSync">Sync จุด</button>
+      <button id="bMinus">−10 m</button>
+      <button id="bPlus">+10 m</button>
+      <button id="bTsd">เริ่ม TSD</button>
+      <button id="bMore">เพิ่มเติม</button>
+    </div>
+  </section>
+
+  <section id="mapWrap">
+    <div id="map"></div>
+    <div class="fabs">
+      <button class="fab" id="fLayer" title="สลับแผนที่/ดาวเทียม">ดาวเทียม</button>
+      <button class="fab org-only" id="fAdd" aria-pressed="false">+ จุด</button>
+      <button class="fab org-only" id="fFit">ทั้ง stage</button>
+      <button class="fab nav-only" id="fFollow" aria-pressed="true">ตามรถ</button>
+      <button class="fab org-only" id="fLocate">ตำแหน่งฉัน</button>
+    </div>
+    <div class="hint" id="addHint" hidden>แตะบนเส้นทางเพื่อวางจุด</div>
+  </section>
+
+  <!-- Organizer panel -->
+  <section id="panel">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="rb" aria-selected="true">Roadbook</button>
+      <button role="tab" data-tab="stage" aria-selected="false">Stage</button>
+      <button role="tab" data-tab="file" aria-selected="false">ไฟล์</button>
+    </div>
+    <div class="tabpane" id="tab-rb"></div>
+    <div class="tabpane" id="tab-stage" hidden></div>
+    <div class="tabpane" id="tab-file" hidden>
+      <div class="group">
+        <h3>นำเข้า</h3>
+        <label class="btn">นำเข้า GPX<input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
+        <label class="btn">เปิดไฟล์โปรเจกต์ (.json)<input type="file" id="inJson" accept=".json,application/json" hidden></label>
+        <p class="note">GPX แต่ละ track จะกลายเป็น 1 stage และ waypoint ที่อยู่ห่างเส้นทางไม่เกิน 40 m จะถูกดึงเข้ามาเป็นจุดให้อัตโนมัติ</p>
+      </div>
+      <div class="group">
+        <h3>ส่งออก</h3>
+        <button id="bSaveJson">บันทึกโปรเจกต์ (.json)</button>
+        <button id="bCsv">Roadbook เป็น CSV (เปิดใน Excel)</button>
+        <button id="bGpxOut">เส้นทาง + จุด เป็น GPX</button>
+        <button id="bLogOut">เส้นทางที่วิ่งจริง เป็น GPX</button>
+      </div>
+      <div class="group">
+        <h3>โปรเจกต์</h3>
+        <label class="field">ชื่อโปรเจกต์<input id="projName"></label>
+        <button id="bNewProj" class="danger-btn">เริ่มโปรเจกต์ใหม่</button>
+        <button id="bInstall" hidden class="primary">ติดตั้งแอปลงเครื่อง</button>
+        <p class="note" id="storeNote"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Point editor -->
+<dialog id="ptDlg">
+  <form method="dialog" class="dlg">
+    <div class="dlg-head">
+      <div class="dlg-km"><span id="ptKm">0.00</span> km</div>
+      <div class="nudge">
+        <button type="button" data-nudge="-10">−10</button>
+        <button type="button" data-nudge="-1">−1</button>
+        <button type="button" data-nudge="1">+1</button>
+        <button type="button" data-nudge="10">+10</button>
+        <span class="unit">m</span>
+      </div>
+    </div>
+    <div class="types" id="ptTypes"></div>
+    <div class="danger-lv" id="ptDanger" hidden>
+      ระดับอันตราย
+      <button type="button" data-lv="1">!</button>
+      <button type="button" data-lv="2">!!</button>
+      <button type="button" data-lv="3">!!!</button>
+    </div>
+    <div class="tulip-edit">
+      <div class="tulip-preview" id="ptPreview"></div>
+      <div class="tulip-ctl">
+        <div class="presets" id="ptPresets"></div>
+        <label class="field slim">มุม <output id="ptAngleOut">0°</output>
+          <input type="range" id="ptAngle" min="-180" max="180" step="5">
+        </label>
+        <div class="branches"><span>ทางแยกอื่น</span><span id="ptBranches"></span></div>
+      </div>
+    </div>
+    <label class="field">คำสั่ง (ไทย)<input id="ptTh"></label>
+    <label class="field">Instruction (EN)<input id="ptEn"></label>
+    <label class="field">หมายเหตุ<input id="ptNote" placeholder="เช่น ทางลูกรัง, สะพานแคบ"></label>
+    <div class="dlg-foot">
+      <button type="button" id="ptDel" class="danger-btn">ลบจุด</button>
+      <span class="spacer"></span>
+      <button value="cancel">ยกเลิก</button>
+      <button type="button" id="ptSave" class="primary">บันทึก</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Navigator extra -->
+<dialog id="moreDlg">
+  <form method="dialog" class="dlg">
+    <h3>ตั้งค่าระหว่างวิ่ง</h3>
+    <label class="check"><input type="checkbox" id="oMap" checked> แสดงแผนที่</label>
+    <label class="check"><input type="checkbox" id="oSound" checked> เสียงเตือนก่อนถึงจุด</label>
+    <label class="check"><input type="checkbox" id="oVib" checked> สั่นเตือน</label>
+    <label class="check"><input type="checkbox" id="oNight"> จอกลางคืน</label>
+    <label class="check"><input type="checkbox" id="oRec" checked> บันทึกเส้นทางที่วิ่ง</label>
+    <div class="row2">
+      <button type="button" id="oTsdReset">รีเซ็ต TSD</button>
+      <button type="button" id="oOffReset">ล้างค่า Sync</button>
+      <button type="button" id="oLog">ส่งออกเส้นที่วิ่ง</button>
+      <button type="button" id="oLogClear">ล้างเส้นที่วิ่ง</button>
+    </div>
+    <p class="note">เตือนที่ 300 / 100 / 50 m ก่อนถึงจุด ค่า GPS ที่คลาดเกิน 50 m จะไม่ถูกใช้คำนวณระยะ</p>
+    <div class="dlg-foot"><span class="spacer"></span><button value="ok" class="primary">ปิด</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
