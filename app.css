@@ -25,10 +25,14 @@ button:focus-visible,select:focus-visible,input:focus-visible,.btn:focus-within{
 .mode{display:flex;border:2px solid var(--ink);border-radius:3px;overflow:hidden;flex:none}
 .mode button{border:0;border-radius:0;min-height:40px;font-weight:600;padding:0 10px}
 .mode button[aria-selected=true]{background:var(--ink);color:var(--paper)}
-#stageSel{flex:1;min-width:0;min-height:44px;border:1.5px solid var(--ink);background:var(--paper);border-radius:3px;padding:0 8px;font-family:var(--f);font-weight:700;font-size:20px}
+#stageSel{flex:1 1 0;width:0;min-width:0;text-overflow:ellipsis;min-height:44px;border:1.5px solid var(--ink);background:var(--paper);border-radius:3px;padding:0 8px;font-family:var(--f);font-weight:700;font-size:20px}
 
 /* Layout */
-main{display:grid;min-height:0;overflow:hidden}
+main{display:grid;min-height:0;min-width:0;overflow:hidden;grid-template-columns:minmax(0,1fr)}
+#panel,.tabpane,.dash,.group{min-width:0}
+.row2>*,.row3>*,.field{min-width:0}
+.field input,.field select{width:100%;min-width:0}
+.kv{grid-template-columns:auto minmax(0,1fr)}
 body.mode-org main{grid-template-rows:55% 45%;grid-template-areas:"map" "panel"}
 body.mode-nav main,body.mode-rec main{grid-template-rows:auto 1fr;grid-template-areas:"dash" "map"}
 body.mode-nav.nomap main{grid-template-rows:1fr}
@@ -198,6 +202,7 @@ button:disabled{opacity:.45;cursor:default}
 .rec-on::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px}
 
 /* Header gear */
+@media (max-width:400px){.bar{gap:6px;padding-left:8px;padding-right:8px}.mode button{padding:0 7px;font-size:15px}#stageSel{font-size:17px;padding:0 4px}.gear{width:40px}}
 .gear{flex:none;width:44px;padding:0;display:flex;align-items:center;justify-content:center}
 
 /* Rally clock */
