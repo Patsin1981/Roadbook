@@ -45,6 +45,7 @@
       <button id="rFinish" data-i18n="rec.finish"></button>
       <button id="rDiscard" class="danger-btn" data-i18n="rec.discard"></button>
     </div>
+    <label class="btn rec-ph" id="rPhoto" hidden><span id="rPhotoTxt"></span><input type="file" id="inRecPh" accept="image/*" capture="environment" hidden></label>
     <p class="note" id="rNote" data-i18n="rec.note"></p>
   </section>
 
@@ -137,11 +138,13 @@
         <h3 data-i18n="file.import"></h3>
         <label class="btn"><span data-i18n="file.importGpx"></span><input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
         <label class="btn"><span data-i18n="file.openJson"></span><input type="file" id="inJson" accept=".json,application/json" hidden></label>
+        <label class="btn"><span data-i18n="ph.import"></span><input type="file" id="inPhGps" accept="image/jpeg,image/*" multiple hidden></label>
         <p class="note" data-i18n="file.importNote"></p>
       </div>
       <div class="group">
         <h3 data-i18n="file.export"></h3>
         <button id="bSaveJson" data-i18n="file.saveJson"></button>
+        <button id="bSaveJsonPh" data-i18n="file.saveJsonPh"></button>
         <button id="bXlsx" class="primary" data-i18n="file.xlsx"></button>
         <button id="bCsv" data-i18n="file.csv"></button>
         <button id="bGpxOut" data-i18n="file.gpx"></button>
@@ -206,6 +209,14 @@
     <label class="field"><span data-i18n="pt.th"></span><input id="ptTh"></label>
     <label class="field"><span data-i18n="pt.en"></span><input id="ptEn"></label>
     <label class="field"><span data-i18n="pt.note"></span><input id="ptNote" data-i18n-ph="pt.notePh"></label>
+    <div class="ph-box" id="ptPhotos">
+      <div class="ph-head"><span data-i18n="ph.title"></span> <span id="ptPhCount"></span></div>
+      <div class="ph-list" id="ptPhList"></div>
+      <div class="row2" id="ptPhBtns">
+        <label class="btn"><span data-i18n="ph.camera"></span><input type="file" id="inPhCam" accept="image/*" capture="environment" hidden></label>
+        <label class="btn"><span data-i18n="ph.gallery"></span><input type="file" id="inPhGal" accept="image/*" multiple hidden></label>
+      </div>
+    </div>
     <div class="dlg-foot">
       <button type="button" id="ptDel" class="danger-btn"></button>
       <button type="button" id="ptSplit" data-i18n="split.here"></button>
@@ -264,6 +275,14 @@
   </form>
 </dialog>
 
+<!-- Photo viewer -->
+<dialog id="phDlg" class="ph-view">
+  <form method="dialog">
+    <img id="phImg" alt="">
+    <div class="ph-cap"><span id="phCap"></span><button value="ok" class="primary" data-i18n="common.close"></button></div>
+  </form>
+</dialog>
+
 <input type="file" id="inAny" accept=".gpx,.json,application/gpx+xml,application/json,application/xml,text/xml" multiple hidden>
 <div id="toast" role="status" hidden></div>
 
@@ -272,6 +291,7 @@
 <script src="i18n.js"></script>
 <script src="symbols.js"></script>
 <script src="overview.js"></script>
+<script src="photos.js"></script>
 <script src="export-xlsx.js"></script>
 <script src="app.js"></script>
 </body>

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.5.0';
+  var APP_VER = '1.6.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -25,7 +25,7 @@
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
     clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
-    paper: 'A5', coordFmt: 'ddm'
+    paper: 'A5', coordFmt: 'ddm', xlPhotos: true
   };
   var CFG = (function () {
     var raw = null, c = {};
@@ -134,6 +134,7 @@
     clearTimeout(saveT);
     if (!META.dirtySince) { META.dirtySince = Date.now(); saveMeta(); }
     saveT = setTimeout(function () { try { store.setItem(KEY, JSON.stringify(P)); } catch (e) { toast(t('err.storageFull'), 5000); } }, 300);
+    gcPhotos();
   }
   var S = { mode: 'org', stageId: null, sel: null, addMode: false, suggest: [], sat: false, ctrlOnly: false, draw: null };
   var P = load() || newProject();
@@ -277,7 +278,7 @@
     var html = '<svg class="lead" width="1" height="1"><line x1="0" y1="0" x2="' + ex.toFixed(1) + '" y2="' + ey.toFixed(1) + '"/></svg>' +
       '<i class="cdot ' + cls + '"></i>' +
       '<div class="ctl-tag ' + cls + (single && S.sel === p.id ? ' sel' : '') + '" style="left:' + lx.toFixed(1) + 'px;top:' + ly.toFixed(1) + 'px;min-width:' + b.w + 'px;height:' + b.h + 'px">' +
-      '<b>' + RB.esc(it.code) + '</b>' + it.lines.map(function (l) { return '<span>' + RB.esc(l) + '</span>'; }).join('') + '</div>';
+      '<b>' + RB.esc(it.code) + (it.g.some(function (g) { return phList(g.p).length; }) ? '<i class="phm"></i>' : '') + '</b>' + it.lines.map(function (l) { return '<span>' + RB.esc(l) + '</span>'; }).join('') + '</div>';
     return L.divIcon({ className: 'ctl-icon', html: html, iconSize: [0, 0], iconAnchor: [0, 0] });
   }
   function drawPins() {
@@ -310,7 +311,7 @@
       var keep = p.id === S.sel || !(shown.some(function (o) { return Math.hypot(o.x - x, o.y - y) < 26; }) || blocked.some(function (bx) { return rectsOverlap(r, bx); }));
       if (!keep) return;
       shown.push({ x: x, y: y });
-      var m = L.marker([p.lat, p.lon], { draggable: S.mode === 'org', autoPan: true, icon: L.divIcon({ className: '', html: '<div class="pin ' + p.type + (S.sel === p.id ? ' sel' : '') + '">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(gPins);
+      var m = L.marker([p.lat, p.lon], { draggable: S.mode === 'org', autoPan: true, icon: L.divIcon({ className: '', html: '<div class="pin ' + p.type + (S.sel === p.id ? ' sel' : '') + (phList(p).length ? ' hasph' : '') + '">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(gPins);
       m.on('click', function () { if (S.mode === 'org' && !S.draw) { S.sel = p.id; renderRB(); drawPins(); openPoint(p, false); } });
       m.on('dragend', function () {
         var ll = m.getLatLng(), r2 = RB.project(st.track, cumOf(st), ll.lat, ll.lng);
@@ -403,7 +404,7 @@
     return '<div class="rb-row' + (p.type === 'DANGER' ? ' danger' : '') + (RB.isControl(p) ? ' ctrl' : '') + (S.sel === p.id ? ' sel' : '') + '" data-id="' + p.id + '">' +
       '<div><span class="rb-no">#' + (i + 1) + '</span><span class="rb-tot">' + fmtKm(km) + '</span><span class="rb-par">' + fmtKm(km - prevKm) + '</span></div>' +
       '<div class="rb-tulip">' + RB.tulipOf(p, { size: 56 }) + '</div>' +
-      '<div class="rb-text">' + tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (ins.sub ? '<span class="en">' + RB.esc(ins.sub) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + symsHTML(p, 26) + '</div></div>';
+      '<div class="rb-text">' + tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (ins.sub ? '<span class="en">' + RB.esc(ins.sub) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + symsHTML(p, 26) + thumbsHTML(p) + '</div></div>';
   }
   function renderRB() {
     var el = $('tab-rb'), st = stage();
@@ -421,9 +422,12 @@
     var prev = 0, h = '';
     ps.forEach(function (p, i) { h += rowHTML(p, i, prev, f); prev = p.d * f / 1000; });
     el.innerHTML = h;
+    fillImgs(el);
     el.querySelectorAll('.rb-row').forEach(function (r) {
-      r.onclick = function () {
+      r.onclick = function (e) {
         var p = st.points.filter(function (x) { return x.id === r.dataset.id; })[0];
+        var im = e.target.closest('img[data-ph]');
+        if (im) { openPhoto(im.dataset.ph, photoCaption(st, p)); return; }
         S.sel = p.id; map.setView([p.lat, p.lon], Math.max(map.getZoom(), 17)); renderRB(); drawPins(); openPoint(p, false);
       };
     });
@@ -624,7 +628,8 @@
     $('ptSave').onclick = function () {
       var st = stage();
       D.code = (D.code || '').trim();
-      if (Dnew) st.points.push(D); else Object.assign(Dorig, D);
+      if (!D.photos || !D.photos.length) delete D.photos;
+      if (Dnew) st.points.push(D); else { if (!D.photos) delete Dorig.photos; Object.assign(Dorig, D); }
       S.sel = D.id; save(); $('ptDlg').close(); renderAll();
     };
     $('ptDel').onclick = function () {
@@ -633,7 +638,7 @@
       if (Dnew) return go();
       ask({ title: t('confirm.delPoint'), ok: t('common.delete'), danger: true }).then(function (ok) { if (ok) go(); });
     };
-    $('ptDlg').addEventListener('close', function () { if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; } D = null; });
+    $('ptDlg').addEventListener('close', function () { if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; } D = null; gcPhotos(); });
   })();
   function openPoint(p, isNew) {
     Dorig = p; Dnew = isNew; D = JSON.parse(JSON.stringify(p)); D.branches = D.branches || []; D.code = D.code || ''; D.time = D.time || '';
@@ -642,6 +647,7 @@
     $('ptDel').textContent = isNew ? t('pt.discard') : t('pt.delete');
     $('ptSplit').hidden = isNew;
     $('ptSymWrap').open = !!(D.sym && D.sym.length);
+    D.photos = D.photos || []; renderPtPhotos();
     syncDlg(); showDraft(); $('ptDlg').showModal();
   }
   function showDraft() {
@@ -668,6 +674,129 @@
     document.querySelectorAll('#ptSyms [data-sym]').forEach(function (b) { b.setAttribute('aria-pressed', sy.indexOf(b.dataset.sym) >= 0); });
     $('ptSymCount').textContent = sy.length ? '(' + sy.length + ')' : '';
     $('ptTh').value = D.th || ''; $('ptEn').value = D.en || '';
+  }
+
+  // ---------- Photos (stored on this phone in IndexedDB; points keep only { id, book }) ----------
+  var PH_MAX = 3, phBusy = 0, gcT = null;
+  function phList(p) { return (p && p.photos) || []; }
+  function livePhotoIds(onlyProject) {
+    var a = [], seen = {};
+    var add = function (id) { if (id && !seen[id]) { seen[id] = 1; a.push(id); } };
+    P.stages.forEach(function (st) { (st.points || []).forEach(function (p) { phList(p).forEach(function (x) { add(x.id); }); }); });
+    if (!onlyProject) {
+      if (typeof R !== 'undefined' && R) (R.marks || []).forEach(function (m) { (m.photos || []).forEach(add); });
+      if (D) phList(D).forEach(function (x) { add(x.id); });
+    }
+    return a;
+  }
+  // forget pictures nothing points to any more (deleted points, discarded recce, cancelled edits)
+  function gcPhotos() {
+    clearTimeout(gcT);
+    gcT = setTimeout(function () { if (phBusy) return gcPhotos(); RBP.gc(livePhotoIds()); }, 2000);
+  }
+  function instrText(p) { var a = LANG === 'th' ? [p.th, p.en] : [p.en, p.th]; return a[0] || a[1] || ''; }
+  function photoCaption(st, p) {
+    var ps = pts(st), i = ps.map(function (q) { return q.id; }).indexOf(p.id), km = fmtKm(p.d * fac(st) / 1000, CFG.navDec) + ' km', txt = instrText(p);
+    if (RB.isControl(p)) return [(p.code || p.type), txt, p.time, km].filter(Boolean).join('  ·  ');
+    return [i >= 0 ? t('ph.box', { n: i + 1 }) : '', km, txt].filter(Boolean).join('  ·  ');
+  }
+  function thumbsHTML(p) {
+    var a = phList(p);
+    return a.length ? '<span class="rb-ph">' + a.map(function (x) { return '<img data-ph="' + x.id + '" class="' + (x.book ? '' : 'off') + '" alt="">'; }).join('') + '</span>' : '';
+  }
+  function fillImgs(root) {
+    root.querySelectorAll('img[data-ph]').forEach(function (img) {
+      RBP.url(img.dataset.ph).then(function (u) { if (u) img.src = u; else img.alt = '?'; });
+    });
+  }
+  function openPhoto(id, cap) {
+    RBP.url(id).then(function (u) {
+      if (!u) return toast(t('ph.missing'), 4000);
+      $('phImg').src = u; $('phCap').textContent = cap || ''; $('phDlg').showModal();
+    });
+  }
+  $('phImg').onclick = function () { $('phDlg').close(); };
+  function renderPtPhotos() {
+    if (!D) return;
+    var a = D.photos || [];
+    $('ptPhCount').textContent = a.length ? '(' + a.length + '/' + PH_MAX + ')' : '';
+    $('ptPhList').innerHTML = a.map(function (x, i) {
+      return '<div class="ph"><img data-ph="' + x.id + '" alt="">' +
+        '<div class="ph-ctl"><button type="button" data-book="' + i + '" aria-pressed="' + !!x.book + '">' + t('ph.book') + '</button>' +
+        '<button type="button" class="danger-btn" data-phdel="' + i + '" aria-label="' + t('common.delete') + '">×</button></div></div>';
+    }).join('');
+    $('ptPhBtns').hidden = a.length >= PH_MAX;
+    fillImgs($('ptPhList'));
+  }
+  $('ptPhList').onclick = function (e) {
+    if (!D) return;
+    var b = e.target.closest('[data-book]'), x = e.target.closest('[data-phdel]'), im = e.target.closest('img[data-ph]');
+    if (b) { var ph = D.photos[+b.dataset.book]; ph.book = !ph.book; renderPtPhotos(); }
+    else if (x) { D.photos.splice(+x.dataset.phdel, 1); renderPtPhotos(); }
+    else if (im) { var st = stage(); openPhoto(im.dataset.ph, st ? photoCaption(st, D) : ''); }
+  };
+  function addPtFiles(files) {
+    if (!D || !files.length) return;
+    var room = PH_MAX - D.photos.length, list = files.slice(0, Math.max(0, room)), target = D;
+    if (files.length > room) toast(t('ph.max', { n: PH_MAX }), 3500);
+    if (!list.length) return;
+    phBusy++; toast(t('ph.saving'), 20000);
+    list.reduce(function (pr, f) {
+      return pr.then(function () {
+        return RBP.add(f).then(function (rec) {
+          if (D !== target) return; // dialog was closed meanwhile; the picture is cleaned up later
+          D.photos.push({ id: rec.id, book: RB.isControl(D) }); renderPtPhotos();
+        });
+      });
+    }, Promise.resolve()).then(function () { toast(t('ph.added'), 1500); })
+      .catch(function () { toast(t('ph.fail'), 5000); })
+      .then(function () { phBusy--; });
+  }
+  $('inPhCam').onchange = function () { addPtFiles([].slice.call(this.files)); this.value = ''; };
+  $('inPhGal').onchange = function () { addPtFiles([].slice.call(this.files)); this.value = ''; };
+
+  // pictures from the gallery that carry a GPS position go to the nearest roadbook point
+  $('inPhGps').onchange = function () { var f = [].slice.call(this.files); this.value = ''; importGeoPhotos(f); };
+  function importGeoPhotos(files) {
+    if (!files.length) return;
+    if (!P.stages.length) return toast(t('err.noStage'));
+    var res = { att: 0, made: 0, noGps: 0, far: 0, fail: 0 }, loose = [], i = 0;
+    phBusy++; toast(t('ph.importing', { n: files.length }), 60000);
+    function next() {
+      if (i >= files.length) return Promise.resolve();
+      var f = files[i++];
+      return RBP.add(f).then(function (rec) {
+        if (rec.lat == null) { res.noGps++; return RBP.del(rec.id); }
+        var best = null;
+        P.stages.forEach(function (st) {
+          if (!st.track || st.track.length < 2) return;
+          var r = RB.project(st.track, cumOf(st), rec.lat, rec.lon);
+          if (r && (!best || r.off < best.r.off)) best = { st: st, r: r };
+        });
+        if (!best || best.r.off > 300) { res.far++; return RBP.del(rec.id); }
+        var near = null;
+        best.st.points.forEach(function (p) { var dd = Math.abs(p.d - best.r.d); if (dd <= 50 && phList(p).length < PH_MAX && (!near || dd < near.dd)) near = { p: p, dd: dd }; });
+        if (near) { near.p.photos = phList(near.p).concat([{ id: rec.id, book: RB.isControl(near.p) }]); res.att++; return; }
+        loose.push({ st: best.st, d: best.r.d, id: rec.id });
+      }).catch(function () { res.fail++; }).then(next);
+    }
+    next().then(function () {
+      if (!loose.length) return;
+      return ask({ title: t('ph.looseTitle', { n: loose.length }), body: t('ph.looseBody'), ok: t('ph.looseOk') }).then(function (ok) {
+        if (!ok) return;
+        var made = [];
+        loose.forEach(function (x) {
+          var p = made.filter(function (q) { return q.st === x.st && Math.abs(q.p.d - x.d) <= 50 && q.p.photos.length < PH_MAX; })[0];
+          if (p) { p.p.photos.push({ id: x.id, book: false }); return; }
+          var np = newPointAt(x.st, x.d, null, 'INFO'); np.th = ''; np.en = ''; np.angle = null; np.photos = [{ id: x.id, book: false }];
+          x.st.points.push(np); made.push({ st: x.st, p: np }); res.made++;
+        });
+        res.att += loose.length;
+      });
+    }).then(function () {
+      phBusy--; save(); renderAll();
+      toast(t('ph.importDone', { a: res.att, b: res.made, c: res.noGps, d: res.far }), 7000);
+    });
   }
 
   // ---------- Draw route ----------
@@ -834,15 +963,34 @@
     };
     fr.readAsText(f);
   };
-  function backupJson() {
+  function backupJson(withPh) {
     var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-    download(safeName(P.name) + '_' + day + '.json', JSON.stringify(P), 'application/json');
-    META.dirtySince = null; META.backupAt = Date.now(); saveMeta();
+    var done = function () { META.dirtySince = null; META.backupAt = Date.now(); saveMeta(); };
+    if (withPh !== true) { download(safeName(P.name) + '_' + day + '.json', JSON.stringify(P), 'application/json'); done(); return Promise.resolve(); }
+    var ids = livePhotoIds(true);
+    if (!ids.length) { toast(t('ph.noneToPack')); return backupJson(false); }
+    toast(t('ph.packing', { n: ids.length }), 60000);
+    return Promise.all(ids.map(function (id) { return RBP.b64(id).then(function (x) { return x ? [id, { b64: x.b64, w: x.w, h: x.h }] : null; }).catch(function () { return null; }); }))
+      .then(function (list) {
+        var o = Object.assign({}, P, { photoData: {} }), n = 0;
+        list.forEach(function (e) { if (e) { o.photoData[e[0]] = e[1]; n++; } });
+        download(safeName(P.name) + '_' + day + '_photos.json', JSON.stringify(o), 'application/json'); done();
+        toast(t('ph.packed', { n: n }), 4000);
+      }).catch(function () { toast(t('ph.fail'), 5000); });
   }
-  $('bSaveJson').onclick = backupJson;
+  $('bSaveJson').onclick = function () { backupJson(false); };
+  $('bSaveJsonPh').onclick = function () { backupJson(true); };
   function openProjectText(text, fname) {
     var o = JSON.parse(text); if (!o || !Array.isArray(o.stages)) throw 0;
-    var apply = function () { P = o; S.stageId = P.stages[0] ? P.stages[0].id : null; save(); META.dirtySince = null; saveMeta(); renderAll(); fitStage(); toast(t('toast.opened', { name: P.name || fname })); };
+    var pd = o.photoData || null; delete o.photoData;
+    var apply = function () {
+      if (!pd) return apply2();
+      var ids = Object.keys(pd); phBusy++;
+      toast(t('ph.unpacking', { n: ids.length }), 60000);
+      Promise.all(ids.map(function (id) { return RBP.fromB64(id, pd[id].b64, { w: pd[id].w, h: pd[id].h, t: Date.now() }).catch(function () {}); }))
+        .then(function () { phBusy--; apply2(); });
+    };
+    var apply2 = function () { P = o; S.stageId = P.stages[0] ? P.stages[0].id : null; save(); META.dirtySince = null; saveMeta(); renderAll(); fitStage(); toast(t('toast.opened', { name: P.name || fname })); };
     if (!P.stages.length) return apply();
     ask({ title: t('confirm.replaceTitle'), body: t('confirm.replace', { name: o.name || fname, cur: P.name, n: P.stages.length }), ok: t('confirm.replaceOk'), danger: true }).then(function (ok) { if (ok) apply(); });
   }
@@ -1007,6 +1155,8 @@
         .then(function (logos) {
           return RBX.build(window.ExcelJS, {
             project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl, symbolsPng: symbolsPng,
+            photo: CFG.xlPhotos === false ? null : function (id) { return RBP.b64(id).catch(function () { return null; }); },
+            instr: function (p) { return instrText(p); },
             event: { title: e.title, date: e.date, place: e.place, logos: logos },
             overview: function (st) {
               var real = P.stages.filter(function (x) { return x.id === st.id; })[0];
@@ -1150,6 +1300,7 @@
       R.marks.push(m); if (S.mode === 'rec') recDrawMark(m);
       if (CFG.markFx) { if (navigator.vibrate) navigator.vibrate(80); beep(1200, 1, true); }
       saveRec(true); renderRec(); toast(t('rec.marked', { k: t('mark.' + m.k), km: fmtKm(m.km, 2) }), 1500);
+      offerRecPhoto(m);
     };
   });
   // Finish screen: recording keeps running until "Create stage" is pressed, so "Keep recording" loses nothing
@@ -1166,6 +1317,7 @@
   $('finName').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); $('finOk').click(); } };
   $('finOk').onclick = function () {
     if (R.on) recPause();
+    $('rPhoto').hidden = true;
     var name = $('finName').value.trim() || nextStageName();
     var tr = RB.cleanTrack(R.pts.map(function (p) { return [p[0], p[1]]; }), 2);
     if (tr.length < 2) { $('finDlg').close(); return toast(t('rec.tooShort')); }
@@ -1184,6 +1336,7 @@
       }
       var p = newPointAt(st, d, null, type);
       if (type !== 'TULIP') { p.th = ''; p.en = ''; p.angle = type === 'DANGER' ? 0 : null; }
+      if (m.photos && m.photos.length) p.photos = m.photos.slice(0, PH_MAX).map(function (id) { return { id: id, book: RB.isControl(p) }; });
       st.points.push(p);
     });
     var n = R.marks.length;
@@ -1192,6 +1345,25 @@
     save(); setMode('org'); selectStage(st.id, true);
     toast(t('toast.recDone', { name: st.name, km: (lenOf(st) / 1000).toFixed(3), n: n }), 4500);
   };
+  // after a mark, offer a photo of that spot for a few seconds
+  var recPhT = null, recPhMark = null;
+  function offerRecPhoto(m) {
+    recPhMark = m;
+    $('rPhotoTxt').textContent = t('ph.recShoot', { k: t('mark.' + m.k), km: fmtKm(m.km, 2) }) + ((m.photos || []).length ? '  (' + m.photos.length + ')' : '');
+    $('rPhoto').hidden = (m.photos || []).length >= PH_MAX;
+    clearTimeout(recPhT); recPhT = setTimeout(function () { $('rPhoto').hidden = true; }, 10000);
+  }
+  $('inRecPh').onchange = function () {
+    var f = this.files[0], m = recPhMark; this.value = '';
+    if (!f || !m) return;
+    clearTimeout(recPhT); $('rPhoto').hidden = true;
+    phBusy++; toast(t('ph.saving'), 20000);
+    RBP.add(f, { lat: m.lat, lon: m.lon }).then(function (rec) {
+      m.photos = (m.photos || []).concat([rec.id]); saveRec(true);
+      toast(t('ph.added'), 1500);
+      if (R.marks.indexOf(m) >= 0) offerRecPhoto(m);
+    }).catch(function () { toast(t('ph.fail'), 5000); }).then(function () { phBusy--; });
+  };
   $('rDiscard').onclick = function () {
     if (!R.pts.length && !R.marks.length) return;
     ask({ title: t('confirm.recDiscardTitle'), body: t('confirm.recDiscard', { km: fmtKm(R.dist / 1000), n: R.marks.length }), ok: t('rec.discard'), danger: true }).then(function (ok) {
@@ -1199,6 +1371,7 @@
       if (R.on) recPause();
       R.pts = []; R.marks = []; R.startT = null; R.elapsed = 0; R.dist = 0;
       try { store.removeItem(RKEY); } catch (e) {}
+      $('rPhoto').hidden = true; gcPhotos();
       recDrawAll(); renderRec();
     });
   };
@@ -1450,13 +1623,14 @@
 
       grpH(t('set.docs'),
         rowH(t('set.paper'), segH('paper', [['A5', 'A5'], ['A4', 'A4']])) +
-        rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])),
+        rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])) +
+        chkH('xlPhotos', t('set.xlPhotos')),
         t('set.docsNote')) +
 
       grpH(t('set.data'),
         chkH('backup', t('set.backupRemind')) +
         '<p class="note" id="sBackupInfo">' + (META.backupAt ? t('set.lastBackup', { d: new Date(META.backupAt).toLocaleString(LANG === 'th' ? 'th-TH' : 'en-GB') }) : t('set.neverBackup')) + '</p>' +
-        '<button type="button" id="sBackup">' + t('file.saveJson') + '</button>' +
+        '<div class="row2"><button type="button" id="sBackup">' + t('file.saveJson') + '</button><button type="button" id="sBackupPh">' + t('file.saveJsonPh') + '</button></div>' +
         '<p class="note" id="sStore"></p>') +
 
       grpH(t('set.about'),
@@ -1499,7 +1673,8 @@
     body.querySelectorAll('[data-off]').forEach(function (b) {
       b.onclick = function () { var d = +b.dataset.off; CFG.clockOffset = d ? (CFG.clockOffset || 0) + d : 0; cfgChanged('clockOffset'); renderSettings(); };
     });
-    $('sBackup').onclick = function () { backupJson(); renderSettings(); };
+    $('sBackup').onclick = function () { backupJson(false); renderSettings(); };
+    $('sBackupPh').onclick = function () { backupJson(true).then(renderSettings); };
     $('sTilesClear').onclick = function () {
       if (!window.caches) return;
       ask({ title: t('set.tilesClearTitle'), body: t('set.tilesConfirm'), ok: t('set.tilesClear'), danger: true }).then(function (ok) {
@@ -1556,7 +1731,7 @@
   applyI18n(); renderAll(); fitStage();
   if (R.startT) toast(t('rec.restored'), 4000);
   else if (CFG.backup && P.stages.length && META.dirtySince && Date.now() - META.dirtySince > 86400000) {
-    toast(t('backup.remind'), 15000); $('toast').onclick = function () { $('toast').hidden = true; backupJson(); };
+    toast(t('backup.remind'), 15000); $('toast').onclick = function () { $('toast').hidden = true; backupJson(false); };
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
 

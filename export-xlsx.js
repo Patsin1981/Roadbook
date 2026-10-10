@@ -41,6 +41,54 @@
     for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) ws.getCell(r, c).border = BOX;
   }
 
+  // ---- photo pages: control photos (2 a page) before a leg, other pictures (2 x 2) after it ----
+  var EMU = 9525, PCOL_W = 10, PCOL_PX = 75; // Excel draws a width-10 column 75 px wide
+  function photoSheet(wb, ctx, name, title, items, perRow, used, jobs) {
+    var cfg = ctx.cfg;
+    var ws = wb.addWorksheet(sheetName(name, used), {
+      pageSetup: {
+        paperSize: cfg.paper === 'A4' ? 9 : 11, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,
+        margins: { left: 0.3, right: 0.3, top: 0.35, bottom: 0.4, header: 0.15, footer: 0.15 }
+      },
+      views: [{ showGridLines: false }]
+    });
+    ws.headerFooter.oddFooter = '&C&"Tahoma"&9' + (ctx.project.name || '') + '  ' + title + '   &P / &N';
+    var cols = [{ width: 2 }]; for (var i = 0; i < 8; i++) cols.push({ width: PCOL_W }); cols.push({ width: 2 });
+    ws.columns = cols;
+    ws.mergeCells(1, 2, 1, 9);
+    var tc = ws.getCell(1, 2); tc.value = title; cellStyle(tc, { size: 16, bold: true, border: false, h: 'left' });
+    ws.getRow(1).height = 30;
+    var span = 8 / perRow, capH = perRow === 1 ? 24 : 34, imgH = perRow === 1 ? 255 : 215, r = 2, capRow = 0, imgRow = 0;
+    items.forEach(function (it, k) {
+      var col = k % perRow, gridRow = Math.floor(k / perRow);
+      if (col === 0) {
+        if (gridRow > 0 && gridRow % 2 === 0) ws.getRow(r - 1).addPageBreak();
+        capRow = r; imgRow = r + 1;
+        ws.getRow(capRow).height = capH; ws.getRow(imgRow).height = imgH; ws.getRow(r + 2).height = 10;
+        r += 3;
+      }
+      var c1 = 2 + col * span, c2 = c1 + span - 1;
+      ws.mergeCells(capRow, c1, capRow, c2); ws.mergeCells(imgRow, c1, imgRow, c2);
+      var cap = ws.getCell(capRow, c1); cap.value = it.cap;
+      cellStyle(cap, { size: perRow === 1 ? 13 : 11, bold: true, border: false, h: 'left', v: 'bottom' });
+      boxRange(ws, imgRow, c1, imgRow, c2);
+      (function (c1, imgRow) {
+        jobs.push(ctx.photo(it.id).then(function (img) {
+          if (!img) { var c = ws.getCell(imgRow, c1); c.value = '(no photo)'; cellStyle(c, { size: 11, color: 'FF888888' }); return; }
+          var boxW = span * PCOL_PX * 0.9 - 10, boxH = imgH * 4 / 3 - 14, k = Math.min(boxW / img.w, boxH / img.h);
+          var w = Math.round(img.w * k), h = Math.round(img.h * k), x = 5 + (boxW - w) / 2, y = 5 + (boxH - h) / 2;
+          var id = wb.addImage({ base64: img.b64, extension: 'jpeg' });
+          ws.addImage(id, {
+            tl: { nativeCol: c1 - 1 + Math.floor(x / PCOL_PX), nativeColOff: Math.round((x % PCOL_PX) * EMU), nativeRow: imgRow - 1, nativeRowOff: Math.round(y * EMU) },
+            ext: { width: w, height: h }, editAs: 'oneCell'
+          });
+        }));
+      })(c1, imgRow);
+    });
+    return ws;
+  }
+  function kmTxt(v, cfg) { return v.toFixed(cfg.navDec === 3 ? 3 : 2) + ' km'; }
+
   // ctx: { project, stages, cfg, t, tulipPng(point) -> Promise<base64>, isControl, typeLabel }
   function build(ExcelJS, ctx) {
     var wb = new ExcelJS.Workbook();
@@ -97,6 +145,16 @@
         })(ov, st);
       }
       var ps = st.points.slice().sort(function (a, b) { return a.d - b.d; });
+      // photos marked "in book": controls get their own page before the roadbook, the rest go to a pictures page after it
+      var ctrlPh = [], otherPh = [], seeNo = {};
+      if (ctx.photo) ps.forEach(function (p, i) {
+        (p.photos || []).filter(function (x) { return x.book; }).forEach(function (x) {
+          var km = kmTxt(p.d * f / 1000, cfg), txt = ctx.instr ? ctx.instr(p) : (p.th || p.en || '');
+          if (ctx.isControl(p)) ctrlPh.push({ id: x.id, cap: [p.code || p.type, txt, p.time, km].filter(Boolean).join('   ') });
+          else { otherPh.push({ id: x.id, cap: [t('ph.box', { n: i + 1 }), km, txt].filter(Boolean).join('  ·  ') }); seeNo[p.id] = i + 1; }
+        });
+      });
+      if (ctrlPh.length) photoSheet(wb, ctx, st.name + ' ' + t('xl.ctrlPhotos'), st.name + '  ' + t('xl.ctrlPhotos'), ctrlPh, 1, used, jobs);
       var ws = wb.addWorksheet(sheetName(st.name, used), {
         pageSetup: {
           paperSize: cfg.paper === 'A4' ? 9 : 11, orientation: 'portrait',
@@ -210,6 +268,7 @@
         if (main) lines.push(main);
         if (p.note) lines.push(p.note);
         if (ctx.isControl(p)) lines.push(coordText(p, cfg.coordFmt));
+        if (seeNo[p.id]) lines.push('(' + t('xl.seePhoto', { n: seeNo[p.id] }) + ')');
         var info = ws.getCell(r, 6);
         info.value = lines.join('\n');
         cellStyle(info, { size: 16, bold: false, color: p.type === 'DANGER' ? 'FFD0021B' : undefined });
@@ -233,6 +292,7 @@
         }));
       });
       if (!ps.length) { ws.getCell('F8').value = t('xl.noPoints'); }
+      if (otherPh.length) photoSheet(wb, ctx, st.name + ' ' + t('xl.pictures'), st.name + '  ' + t('xl.pictures'), otherPh, 2, used, jobs);
     });
     return Promise.all(jobs).then(function () { return wb.xlsx.writeBuffer(); });
   }
