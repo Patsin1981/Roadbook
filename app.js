@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.4.3';
+  var APP_VER = '1.4.4';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
@@ -132,7 +132,12 @@
   }
   var S = { mode: 'org', stageId: null, sel: null, addMode: false, suggest: [], sat: false, ctrlOnly: false, draw: null };
   var P = load() || newProject();
-  S.stageId = P.stages[0] ? P.stages[0].id : null;
+  // reopen on the stage that was in use last time (falls back to the first one)
+  S.stageId = (function () {
+    var last = null; try { last = store.getItem('rb.lastStage'); } catch (e) {}
+    return P.stages.some(function (x) { return x.id === last; }) ? last : P.stages[0] ? P.stages[0].id : null;
+  })();
+  function rememberStage() { try { if (S.stageId) store.setItem('rb.lastStage', S.stageId); } catch (e) {} }
   var cumCache = new WeakMap();
   function stage() { return P.stages.filter(function (s) { return s.id === S.stageId; })[0] || null; }
   function cumOf(st) { var c = cumCache.get(st.track); if (!c) { c = RB.buildCum(st.track); cumCache.set(st.track, c); } return c; }
@@ -335,7 +340,7 @@
     }
   };
   function selectStage(id, fit) {
-    S.stageId = id; S.sel = null; S.suggest = [];
+    S.stageId = id; rememberStage(); S.sel = null; S.suggest = [];
     navResetMatch(); renderAll(); if (fit) fitStage();
   }
   document.querySelectorAll('.mode button').forEach(function (b) { b.onclick = function () { setMode(b.dataset.mode); }; });
