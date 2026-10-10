@@ -1,12 +1,12 @@
-/* Rally Roadbook — app logic v1.1 */
+/* Rally Roadbook — app logic v1.2 */
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang';
+  var APP_VER = '1.2.0';
+  var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
   var BRANCH_SET = [-135, -90, -45, 0, 45, 90, 135];
-  var ALERTS = [300, 100, 50];
   var OSRM = 'https://router.project-osrm.org/route/v1/driving/';
 
   // ---------- Storage ----------
@@ -15,8 +15,38 @@
     catch (e) { var m = {}; return { getItem: function (k) { return k in m ? m[k] : null; }, setItem: function (k, v) { m[k] = v; }, removeItem: function (k) { delete m[k]; }, mem: true }; }
   })();
 
+  // ---------- Settings ----------
+  var DEF = {
+    lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
+    offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
+    clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true
+  };
+  var CFG = (function () {
+    var raw = null, c = {};
+    try { raw = store.getItem(SKEY); c = JSON.parse(raw || '{}') || {}; } catch (e) {}
+    var o = Object.assign({}, DEF, c);
+    if (!raw) { // carry over options saved by v1.1
+      try {
+        var n = JSON.parse(store.getItem(NKEY) || 'null');
+        if (n) { ['sound', 'vib', 'map', 'rec'].forEach(function (k) { if (k in n) o[k] = n[k]; }); if (n.night) o.night = 'on'; }
+        o.lang = store.getItem(LKEY) || null;
+      } catch (e) {}
+    }
+    return o;
+  })();
+  function saveCfg() { try { store.setItem(SKEY, JSON.stringify(CFG)); } catch (e) {} }
+  var META = (function () { try { return JSON.parse(store.getItem(MKEY) || 'null') || {}; } catch (e) { return {}; } })();
+  function saveMeta() { try { store.setItem(MKEY, JSON.stringify(META)); } catch (e) {} }
+  function isNight() {
+    if (CFG.night === 'on') return true;
+    if (CFG.night === 'auto') { var h = new Date().getHours(); return h >= 18 || h < 6; }
+    return false;
+  }
+  function applyNight() { document.body.classList.toggle('night', S.mode !== 'org' && isNight()); }
+  function alerts() { return (CFG.alerts || []).map(Number).filter(function (x) { return x > 0; }).sort(function (a, b) { return b - a; }); }
+
   // ---------- i18n ----------
-  var LANG = store.getItem(LKEY) || ((navigator.language || 'th').slice(0, 2) === 'th' ? 'th' : 'en');
+  var LANG = CFG.lang || ((navigator.language || 'th').slice(0, 2) === 'th' ? 'th' : 'en');
   if (!I18N[LANG]) LANG = 'th';
   function t(k, v) {
     var s = (I18N[LANG] && I18N[LANG][k]) || I18N.th[k] || k;
@@ -28,14 +58,36 @@
     document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-ph]').forEach(function (el) { el.placeholder = t(el.dataset.i18nPh); });
     document.querySelectorAll('[data-i18n-aria]').forEach(function (el) { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
-    $('langSeg').innerHTML = Object.keys(I18N).map(function (k) { return '<button data-lang="' + k + '" aria-pressed="' + (k === LANG) + '">' + I18N[k]._name + '</button>'; }).join('');
     $('fLayer').textContent = S.sat ? t('fab.map') : t('fab.sat');
     buildDlgLabels();
   }
-  function setLang(l) { LANG = l; try { store.setItem(LKEY, l); } catch (e) {} applyI18n(); renderAll(); }
+  function setLang(l) { LANG = l; CFG.lang = l; saveCfg(); applyI18n(); renderAll(); if ($('setDlg').open) renderSettings(); }
 
   function uid() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4); }
-  function fmtKm(km) { return km == null || !isFinite(km) ? '--.--' : km.toFixed(2); }
+  // roadbook distances use 3 decimals; the driving display uses the chosen setting
+  function fmtKm(km, dec) { dec = dec == null ? 3 : dec; return km == null || !isFinite(km) ? '--.' + '---'.slice(0, dec) : km.toFixed(dec); }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function rallyNow() { return Date.now() + (CFG.clockOffset || 0); }
+  function fmtTod(ms) { var d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); }
+
+  // Buttons that change distance or timing mid-stage need a press-and-hold when that setting is on
+  function act(el, fn, holdable) {
+    var timer = null, fired = false;
+    var need = function () { return holdable && CFG.hold; };
+    el.addEventListener('click', function (e) {
+      if (!need() || e.detail === 0) { fn.call(el, e); return; }
+      if (!fired) toast(t('hold.hint'), 1500);
+      fired = false;
+    });
+    el.addEventListener('pointerdown', function () {
+      if (!need()) return;
+      fired = false; el.classList.remove('holding'); void el.offsetWidth; el.classList.add('holding');
+      timer = setTimeout(function () { fired = true; el.classList.remove('holding'); if (navigator.vibrate) navigator.vibrate(40); fn.call(el); }, 500);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+      el.addEventListener(ev, function () { clearTimeout(timer); el.classList.remove('holding'); });
+    });
+  }
   function toast(msg, ms) {
     var el = $('toast'); el.textContent = msg; el.hidden = false; el.onclick = null;
     clearTimeout(toast._t); toast._t = setTimeout(function () { el.hidden = true; }, ms || 2600);
@@ -49,6 +101,7 @@
   var saveT;
   function save() {
     clearTimeout(saveT);
+    if (!META.dirtySince) { META.dirtySince = Date.now(); saveMeta(); }
     saveT = setTimeout(function () { try { store.setItem(KEY, JSON.stringify(P)); } catch (e) { toast(t('err.storageFull'), 5000); } }, 300);
   }
   var S = { mode: 'org', stageId: null, sel: null, addMode: false, suggest: [], sat: false, ctrlOnly: false, draw: null };
@@ -74,11 +127,13 @@
   var draftMarker = null;
   function dot() { return L.divIcon({ className: '', html: '<div class="gpsdot"></div>', iconSize: [20, 20] }); }
 
-  $('fLayer').onclick = function () {
-    S.sat = !S.sat;
-    if (S.sat) { map.removeLayer(osm); sat.addTo(map); } else { map.removeLayer(sat); osm.addTo(map); }
-    this.textContent = S.sat ? t('fab.map') : t('fab.sat');
-  };
+  function setLayer(on) {
+    if (on === S.sat) return;
+    S.sat = on;
+    if (on) { map.removeLayer(osm); sat.addTo(map); } else { map.removeLayer(sat); osm.addTo(map); }
+    $('fLayer').textContent = on ? t('fab.map') : t('fab.sat');
+  }
+  $('fLayer').onclick = function () { setLayer(!S.sat); };
   $('fFit').onclick = fitStage;
   function fitStage() { var st = stage(); if (st && st.track.length) map.fitBounds(L.latLngBounds(st.track), { padding: [24, 24] }); }
   $('fAdd').onclick = function () { setAdd(!S.addMode); };
@@ -402,7 +457,7 @@
   function drawStart() {
     if (S.mode !== 'org') setMode('org');
     setAdd(false); S.suggest = []; drawSuggest();
-    S.draw = { wps: [], segs: [], snap: true, warned: false };
+    S.draw = { wps: [], segs: [], snap: CFG.drawSnap !== false, warned: false };
     $('drawBar').hidden = false; $('fDraw').hidden = true; $('fAdd').hidden = true; $('fFilter').hidden = true;
     gPins.clearLayers(); map.getContainer().style.cursor = 'crosshair';
     drawRender();
@@ -560,7 +615,11 @@
     };
     fr.readAsText(f);
   };
-  $('bSaveJson').onclick = function () { download(safeName(P.name) + '.json', JSON.stringify(P), 'application/json'); };
+  function backupJson() {
+    download(safeName(P.name) + '.json', JSON.stringify(P), 'application/json');
+    META.dirtySince = null; META.backupAt = Date.now(); saveMeta();
+  }
+  $('bSaveJson').onclick = backupJson;
   $('bCsv').onclick = function () {
     if (!P.stages.length) return toast(t('err.noStage'));
     var body = P.stages.map(function (st, i) { var c = RB.stageCSV(st); return i ? c.split('\r\n').slice(1).join('\r\n') : c; }).join('\r\n');
@@ -573,7 +632,6 @@
     if (!confirm(t('confirm.newProj'))) return;
     P = newProject(); S.stageId = null; save(); renderAll();
   };
-  $('langSeg').onclick = function (e) { var b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang); };
   var deferredInstall = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredInstall = e; $('bInstall').hidden = false; });
   $('bInstall').onclick = function () { if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; $('bInstall').hidden = true; } };
@@ -593,7 +651,7 @@
   }
   var audio = null;
   function beep(freq, n, force) {
-    if (!N.sound && !force) return;
+    if (!CFG.sound && !force) return;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       for (var i = 0; i < n; i++) {
@@ -610,7 +668,7 @@
       accCircle = L.circle(ll, { radius: acc, color: '#0050B3', weight: 1, fillOpacity: .08, interactive: false }).addTo(gNav);
       gpsMarker = L.marker(ll, { icon: dot(), interactive: false }).addTo(gNav);
     } else { gpsMarker.setLatLng(ll); accCircle.setLatLng(ll).setRadius(acc); }
-    if (N.follow && (S.mode === 'rec' || N.map)) map.setView(ll, Math.max(map.getZoom(), 16), { animate: false });
+    if (N.follow && (S.mode === 'rec' || CFG.map)) map.setView(ll, Math.max(map.getZoom(), 16), { animate: false });
   }
   map.on('dragstart', function () { if (S.mode !== 'org') { N.follow = false; $('fFollow').setAttribute('aria-pressed', 'false'); } });
   $('fFollow').onclick = function () {
@@ -666,12 +724,16 @@
     var c = pos.coords, ts = pos.timestamp || Date.now(), prev = R.fix;
     var spd = c.speed != null && c.speed >= 0 ? c.speed : (prev ? RB.hav([prev.lat, prev.lon], [c.latitude, c.longitude]) / Math.max(0.5, (ts - prev.t) / 1000) : 0);
     R.fix = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, spd: spd, t: ts };
-    if (c.accuracy <= 30) {
+    if (c.accuracy <= CFG.recAcc) {
       var last = R.pts[R.pts.length - 1], ll = [c.latitude, c.longitude];
       var step = last ? RB.hav([last[0], last[1]], ll) : 0;
-      // skip jitter while stopped, and implausible jumps (> 70 m/s)
-      if (!last || (step >= Math.max(3, c.accuracy * 0.5) && step / Math.max(0.5, (ts - last[2]) / 1000) < 70)) {
-        R.pts.push([+c.latitude.toFixed(7), +c.longitude.toFixed(7), ts]); R.dist += step;
+      // skip jitter while stopped, and single implausible jumps (> 70 m/s);
+      // after 3 jumps in a row the earlier point was the bad one, so accept the new position
+      var jump = last && step / Math.max(0.5, (ts - last[2]) / 1000) >= 70;
+      if (jump && (R.rej = (R.rej || 0) + 1) < 3) { /* wait for more fixes */ }
+      else if (!last || jump || step >= Math.max(3, c.accuracy * 0.5)) {
+        R.rej = 0;
+        R.pts.push([+c.latitude.toFixed(7), +c.longitude.toFixed(7), ts]); R.dist += jump ? 0 : step;
         if (recLine) recLine.addLatLng(ll); saveRec();
       }
     }
@@ -684,8 +746,8 @@
       var f = R.fix; if (!f) return toast(t('rec.waitGps'));
       var m = { lat: f.lat, lon: f.lon, t: Date.now(), k: b.dataset.k, km: R.dist / 1000 };
       R.marks.push(m); if (S.mode === 'rec') recDrawMark(m);
-      if (navigator.vibrate) navigator.vibrate(80); beep(1200, 1, true);
-      saveRec(true); renderRec(); toast(t('rec.marked', { k: t('mark.' + m.k), km: fmtKm(m.km) }), 1500);
+      if (CFG.markFx) { if (navigator.vibrate) navigator.vibrate(80); beep(1200, 1, true); }
+      saveRec(true); renderRec(); toast(t('rec.marked', { k: t('mark.' + m.k), km: fmtKm(m.km, 2) }), 1500);
     };
   });
   $('rFinish').onclick = function () {
@@ -728,12 +790,12 @@
     $('rStart').textContent = R.on ? t('rec.pause') : R.startT ? t('rec.resume') : t('rec.start');
     $('rStart').classList.toggle('primary', !R.on);
     if (S.mode !== 'rec') return;
-    $('rDist').textContent = fmtKm(R.dist / 1000);
+    $('rDist').textContent = fmtKm(R.dist / 1000, CFG.navDec);
     $('rTime').textContent = fmtClock(recElapsed());
     var g = $('rGps');
     if (!R.on) { g.textContent = t('gps.off'); g.className = ''; }
     else if (!R.fix) { g.textContent = t('gps.wait'); g.className = 'warn'; }
-    else { g.textContent = 'GPS ±' + Math.round(R.fix.acc) + ' m'; g.className = R.fix.acc > 30 ? 'warn' : ''; }
+    else { g.textContent = 'GPS ±' + Math.round(R.fix.acc) + ' m'; g.className = R.fix.acc > CFG.recAcc ? 'warn' : ''; }
     $('rSpeed').textContent = R.fix && R.on ? Math.round(R.fix.spd * 3.6) + ' km/h' : '-- km/h';
     $('rState').textContent = R.on ? t('rec.recording') : R.startT ? t('rec.paused') : '';
     $('rState').className = R.on ? 'rec-on' : '';
@@ -746,7 +808,7 @@
   // ---------- Navigator ----------
   var N = loadNav();
   function loadNav() {
-    var d = { offset: {}, tsdStart: {}, log: [], sound: true, vib: true, night: false, map: true, rec: true };
+    var d = { offset: {}, tsdStart: {}, log: [] };
     try { var s = JSON.parse(store.getItem(NKEY) || 'null'); if (s) Object.assign(d, s); } catch (e) {}
     d.on = false; d.matcher = null; d.d = null; d.fix = null; d.follow = true; d.alerted = {}; d.manualBase = null;
     return d;
@@ -755,11 +817,11 @@
   function saveNav() {
     clearTimeout(navSaveT);
     navSaveT = setTimeout(function () {
-      try { store.setItem(NKEY, JSON.stringify({ offset: N.offset, tsdStart: N.tsdStart, log: N.log.slice(-20000), sound: N.sound, vib: N.vib, night: N.night, map: N.map, rec: N.rec })); } catch (e) {}
+      try { store.setItem(NKEY, JSON.stringify({ offset: N.offset, tsdStart: N.tsdStart, log: N.log.slice(-20000) })); } catch (e) {}
     }, 1000);
   }
   function navResetMatch() { N.matcher = null; N.d = null; N.alerted = {}; N.manualBase = null; }
-  function matcher() { var st = stage(); if (!st) return null; if (!N.matcher) N.matcher = new RB.Matcher(st.track, cumOf(st), { maxOff: 40, maxAcc: 50 }); return N.matcher; }
+  function matcher() { var st = stage(); if (!st) return null; if (!N.matcher) N.matcher = new RB.Matcher(st.track, cumOf(st), { maxOff: CFG.offRoute, maxAcc: CFG.navAcc }); return N.matcher; }
   function offOf() { return N.offset[S.stageId] || 0; }
   function rawPos() { return N.d == null ? null : N.d + offOf(); }
   var trail = null;
@@ -788,7 +850,7 @@
     var c = pos.coords, ts = pos.timestamp || Date.now(), prev = N.fix;
     var spd = c.speed != null && c.speed >= 0 ? c.speed : (prev ? RB.hav([prev.lat, prev.lon], [c.latitude, c.longitude]) / Math.max(0.5, (ts - prev.t) / 1000) : 0);
     N.fix = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, spd: spd, t: ts };
-    if (N.rec && c.accuracy <= 50) {
+    if (CFG.rec && c.accuracy <= CFG.navAcc) {
       var last = N.log[N.log.length - 1];
       if (!last || RB.hav([last[0], last[1]], [c.latitude, c.longitude]) >= 3) { N.log.push([+c.latitude.toFixed(7), +c.longitude.toFixed(7), ts]); if (trail && S.mode === 'nav') trail.addLatLng([c.latitude, c.longitude]); saveNav(); }
     }
@@ -808,14 +870,15 @@
   }
   function checkAlerts() {
     var s = navState(); if (!s || !s.next || s.x == null || (N.match && N.match.offRoute)) return;
-    var dist = (s.next.d - s.x) * s.f;
-    for (var i = ALERTS.length - 1; i >= 0; i--) {
-      var th = ALERTS[i], k = s.next.id + ':' + th;
+    var dist = (s.next.d - s.x) * s.f, A = alerts();
+    for (var i = A.length - 1; i >= 0; i--) {
+      var th = A[i], k = s.next.id + ':' + th;
       if (dist <= th && !N.alerted[k]) {
-        ALERTS.forEach(function (t2) { if (t2 >= th) N.alerted[s.next.id + ':' + t2] = true; });
-        var close = th === 50;
-        beep(close ? 1400 : th === 100 ? 1100 : 800, close ? 3 : th === 100 ? 2 : 1);
-        if (N.vib && navigator.vibrate) navigator.vibrate(close ? [200, 80, 200, 80, 200] : th === 100 ? [150, 80, 150] : [150]);
+        A.forEach(function (t2) { if (t2 >= th) N.alerted[s.next.id + ':' + t2] = true; });
+        // nearest threshold = loudest; the box flashes on the last one
+        var lvl = Math.min(3, A.length - i), close = i === A.length - 1;
+        beep([800, 1100, 1400][lvl - 1], lvl);
+        if (CFG.vib && navigator.vibrate) navigator.vibrate(lvl === 3 ? [200, 80, 200, 80, 200] : lvl === 2 ? [150, 80, 150] : [150]);
         var box = $('dNext'); box.classList.remove('flash'); void box.offsetWidth; if (close) box.classList.add('flash');
         break;
       }
@@ -823,7 +886,7 @@
   }
   function boxFill(p, s, kmId, tulipId, textId, inId) {
     if (!p) { $(tulipId).innerHTML = ''; $(textId).innerHTML = inId ? t('nav.noNext') : ''; $(kmId).textContent = ''; if (inId) $(inId).textContent = '--'; return; }
-    var idx = s.ps.indexOf(p) + 1, ink = N.night && !inId ? '#fff' : '#000', ins = instr(p);
+    var idx = s.ps.indexOf(p) + 1, ink = isNight() && !inId ? '#fff' : '#000', ins = instr(p);
     $(kmId).textContent = '#' + idx + '  ' + fmtKm(p.d * s.f / 1000);
     $(tulipId).innerHTML = RB.tulipSVG(p.angle, p.branches, { size: inId ? 84 : 52, ink: ink });
     $(textId).innerHTML = tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '');
@@ -833,23 +896,28 @@
     }
   }
   function renderNav() {
-    document.body.classList.toggle('night', S.mode === 'nav' && N.night);
-    document.body.classList.toggle('nomap', !N.map);
+    applyNight();
+    document.body.classList.toggle('nomap', !CFG.map);
     $('bGps').textContent = N.on ? t('nav.gpsStop') : t('nav.gpsStart'); $('bGps').classList.toggle('primary', !N.on);
     if (S.mode !== 'nav') return;
     var s = navState();
-    $('dTotal').textContent = s && s.km != null ? fmtKm(s.km) : '--.--';
-    var base = s && s.prev ? s.prev.d * s.f / 1000 : 0;
+    $('dTotal').textContent = fmtKm(s ? s.km : null, CFG.navDec);
+    var base = 0;
+    if (s && s.x != null) {
+      // partial distance restarts at every roadbook point, or only at control points
+      s.ps.forEach(function (p) { if (p.d <= s.x + 5 && (CFG.partial !== 'ctrl' || RB.isControl(p))) base = p.d * s.f / 1000; });
+    }
     if (N.manualBase != null && N.manualBase > base) base = N.manualBase;
-    $('dPartial').textContent = s && s.km != null ? fmtKm(Math.max(0, s.km - base)) : '-.--';
+    $('dPartial').textContent = fmtKm(s && s.km != null ? Math.max(0, s.km - base) : null, CFG.navDec);
     var g = $('dGps');
     if (!N.on) { g.textContent = t('gps.off'); g.className = ''; }
     else if (!N.fix) { g.textContent = t('gps.wait'); g.className = 'warn'; }
     else { g.textContent = 'GPS ±' + Math.round(N.fix.acc) + ' m'; g.className = N.fix.acc > 20 ? 'warn' : ''; }
     $('dSpeed').textContent = N.fix ? Math.round(N.fix.spd * 3.6) + ' km/h' : '-- km/h';
-    $('dRec').textContent = N.rec && N.on ? t('nav.logged', { n: N.log.length }) : '';
+    $('dRec').textContent = CFG.rec && N.on ? t('nav.logged', { n: N.log.length }) : '';
     var off = N.on && N.match && N.match.offRoute && N.fix;
     $('dOff').hidden = !off; if (off) $('dOffM').textContent = Math.round(N.match.off) + ' m';
+    renderClock(s);
     if (!s) { boxFill(null, null, 'dNextKm', 'dNextTulip', 'dNextText', 'dNextIn'); boxFill(null, null, 'dThenKm', 'dThenTulip', 'dThenText'); $('dTsd').hidden = true; $('bTsd').hidden = true; return; }
     boxFill(s.next, s, 'dNextKm', 'dNextTulip', 'dNextText', 'dNextIn');
     boxFill(s.then, s, 'dThenKm', 'dThenTulip', 'dThenText');
@@ -862,42 +930,52 @@
       var el = $('dTsdDelta');
       if (t0 && s.km != null) {
         var elapsed = (Date.now() - t0) / 1000, dlt = elapsed - RB.tsdIdeal(s.st.tsd, s.km);
-        el.textContent = (dlt >= 0 ? '+' : '−') + Math.abs(dlt).toFixed(1) + ' s';
+        el.textContent = (dlt >= 0 ? '+' : '−') + (CFG.tsdFmt === 'cmin' ? (Math.abs(dlt) / 60).toFixed(2) + ' min' : Math.abs(dlt).toFixed(1) + ' s');
         el.className = 'tsd-d ' + (dlt > 0.5 ? 'late' : dlt < -0.5 ? 'early' : '');
         $('dTsdElapsed').textContent = (dlt > 0.5 ? t('nav.late') : dlt < -0.5 ? t('nav.early') : t('nav.onTime')) + '  ' + fmtClock(elapsed);
       } else { el.textContent = '--'; el.className = 'tsd-d'; $('dTsdElapsed').textContent = t('nav.tsdHint'); }
     }
   }
+  // Rally clock (phone time + offset set to the official clock) and countdown to the next timed control
+  function renderClock(s) {
+    $('dClock').textContent = fmtTod(rallyNow());
+    var due = $('dDue'), nx = null;
+    if (s) s.ps.forEach(function (p) { if (!nx && RB.isControl(p) && /^\d{1,2}:\d{2}/.test(p.time || '') && (s.x == null || p.d > s.x + 5)) nx = p; });
+    if (!nx) { due.textContent = ''; due.className = 'due'; return; }
+    var hm = nx.time.split(':'), now = new Date(rallyNow()), d = new Date(now);
+    d.setHours(+hm[0], +hm[1], +(hm[2] || 0), 0);
+    var left = Math.round((d - now) / 1000);
+    if (left < -43200) left += 86400; else if (left > 43200) left -= 86400;
+    due.textContent = (nx.code || nx.type) + ' ' + nx.time + '  ' + (left >= 0 ? t('clock.in') + ' ' + fmtClock(left) : t('clock.over') + ' ' + fmtClock(-left));
+    due.className = 'due' + (left < 0 ? ' late' : left <= 60 ? ' soon' : '');
+  }
   setInterval(function () {
-    if (S.mode === 'nav' && N.tsdStart[S.stageId]) renderNav();
+    if (S.mode === 'nav') { if (N.tsdStart[S.stageId]) renderNav(); else renderClock(navState()); }
+    if (S.mode !== 'org' && CFG.night === 'auto') applyNight();
+    if ($('setDlg').open && $('sClock')) $('sClock').textContent = fmtTod(rallyNow());
     if (S.mode === 'rec' && R.on) $('rTime').textContent = fmtClock(recElapsed());
   }, 500);
 
-  $('partialCell').onclick = function () { var s = navState(); if (s && s.km != null) { N.manualBase = s.km; renderNav(); toast(t('toast.partialZero')); } };
-  $('bSync').onclick = function () {
+  act($('partialCell'), function () { var s = navState(); if (s && s.km != null) { N.manualBase = s.km; renderNav(); toast(t('toast.partialZero')); } }, true);
+  act($('bSync'), function () {
     var s = navState(); if (!s || N.d == null) return toast(t('err.noPos'));
     var best = null; s.ps.forEach(function (p) { var dd = Math.abs(p.d - s.x); if (!best || dd < best.dd) best = { p: p, dd: dd }; });
     if (!best || best.dd * s.f > 400) return toast(t('err.noNearPoint'));
     N.offset[S.stageId] = best.p.d - N.d; N.alerted = {}; N.manualBase = null; saveNav(); renderNav();
     toast(t('toast.synced', { n: s.ps.indexOf(best.p) + 1, km: fmtKm(best.p.d * s.f / 1000) }));
-  };
+  }, true);
   function nudge(m) { var st = stage(); if (!st) return; N.offset[S.stageId] = offOf() + m / fac(st); saveNav(); renderNav(); }
-  $('bMinus').onclick = function () { nudge(-10); };
-  $('bPlus').onclick = function () { nudge(10); };
-  $('bTsd').onclick = function () {
+  act($('bMinus'), function () { nudge(-10); }, true);
+  act($('bPlus'), function () { nudge(10); }, true);
+  act($('bTsd'), function () {
     var id = S.stageId; if (!id) return;
     if (N.tsdStart[id]) { toast(t('toast.tsdAlready')); return; }
     N.tsdStart[id] = Date.now(); saveNav(); renderNav(); beep(1000, 1); toast(t('toast.tsdStarted'));
-  };
-  $('bMore').onclick = function () {
-    $('oMap').checked = N.map; $('oSound').checked = N.sound; $('oVib').checked = N.vib; $('oNight').checked = N.night; $('oRec').checked = N.rec;
-    $('moreDlg').showModal();
-  };
-  [['oMap', 'map'], ['oSound', 'sound'], ['oVib', 'vib'], ['oNight', 'night'], ['oRec', 'rec']].forEach(function (x) {
-    $(x[0]).onchange = function () { N[x[1]] = this.checked; saveNav(); renderNav(); if (x[1] === 'map') setTimeout(function () { map.invalidateSize(); }, 60); };
-  });
-  $('oTsdReset').onclick = function () { delete N.tsdStart[S.stageId]; saveNav(); renderNav(); toast(t('toast.tsdReset')); };
-  $('oOffReset').onclick = function () { delete N.offset[S.stageId]; saveNav(); renderNav(); toast(t('toast.offReset')); };
+  }, true);
+  $('bMore').onclick = function () { $('moreDlg').showModal(); };
+  $('oSet').onclick = function () { $('moreDlg').close(); openSettings(); };
+  act($('oTsdReset'), function () { delete N.tsdStart[S.stageId]; saveNav(); renderNav(); toast(t('toast.tsdReset')); }, true);
+  act($('oOffReset'), function () { delete N.offset[S.stageId]; saveNav(); renderNav(); toast(t('toast.offReset')); }, true);
   $('oLog').onclick = exportLog;
   $('oLogClear').onclick = function () { if (confirm(t('confirm.logClear'))) { N.log = []; saveNav(); gNav.clearLayers(); gpsMarker = accCircle = null; navDrawStatic(); renderNav(); } };
   function exportLog() {
@@ -906,24 +984,160 @@
     download(safeName(nm) + '.gpx', RB.logGPX(nm, N.log), 'application/gpx+xml');
   }
 
+  // ---------- Settings screen ----------
+  var swReg = null, offerUpdate = function () {};
+  function segH(key, opts) {
+    return '<div class="seg wide" data-seg="' + key + '">' + opts.map(function (o) {
+      return '<button type="button" data-v="' + o[0] + '" aria-pressed="' + (String(CFG[key]) === String(o[0])) + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function chkH(key, label) { return '<label class="check"><input type="checkbox" data-chk="' + key + '"' + (CFG[key] ? ' checked' : '') + '> <span>' + label + '</span></label>'; }
+  function numH(key, label, unit, min, max) { return '<label class="field num">' + label + '<span><input inputmode="numeric" data-num="' + key + '" data-min="' + min + '" data-max="' + max + '" value="' + CFG[key] + '"> ' + unit + '</span></label>'; }
+  function rowH(label, ctl) { return '<div class="set-row"><span class="set-lbl">' + label + '</span>' + ctl + '</div>'; }
+  function grpH(title, body, note) { return '<section class="group"><h3>' + title + '</h3>' + body + (note ? '<p class="note">' + note + '</p>' : '') + '</section>'; }
+  function renderSettings() {
+    var A = CFG.alerts || DEF.alerts;
+    var langs = Object.keys(I18N).map(function (k) { return [k, I18N[k]._name]; });
+    var off = CFG.clockOffset || 0, offS = (off >= 0 ? '+' : '−') + (Math.abs(off) / 1000).toFixed(0) + ' s';
+    $('setBody').innerHTML =
+      grpH(t('set.general'),
+        rowH(t('file.lang'), '<div class="seg wide" id="sLang">' + langs.map(function (l) { return '<button type="button" data-lang="' + l[0] + '" aria-pressed="' + (l[0] === LANG) + '">' + l[1] + '</button>'; }).join('') + '</div>') +
+        rowH(t('set.night'), segH('night', [['off', t('set.off')], ['on', t('set.on')], ['auto', t('set.nightAuto')]])) +
+        rowH(t('set.navDec'), segH('navDec', [[2, '0.00'], [3, '0.000']])),
+        t('set.decNote')) +
+
+      grpH(t('set.clock'),
+        '<div class="clock-set"><b id="sClock">' + fmtTod(rallyNow()) + '</b><span>' + t('set.offset') + ' ' + offS + '</span></div>' +
+        '<div class="row2"><label class="field">' + t('set.clockIn') + '<input id="sClockIn" type="time" step="1"></label><button type="button" id="sClockSet" class="primary">' + t('set.clockSet') + '</button></div>' +
+        '<div class="row3"><button type="button" data-off="-1000">−1 s</button><button type="button" data-off="1000">+1 s</button><button type="button" data-off="0">' + t('set.clockClear') + '</button></div>' +
+        rowH(t('set.tsdFmt'), segH('tsdFmt', [['s', t('set.sec')], ['cmin', t('set.cmin')]])),
+        t('set.clockNote')) +
+
+      grpH(t('set.nav'),
+        '<div class="alerts"><span class="set-lbl">' + t('set.alerts') + '</span><div class="row3">' + [0, 1, 2].map(function (i) { return '<input inputmode="numeric" data-alert="' + i + '" value="' + (A[i] || '') + '" aria-label="' + t('set.alerts') + ' ' + (i + 1) + '">'; }).join('') + '</div></div>' +
+        chkH('sound', t('more.sound')) + chkH('vib', t('more.vib')) + chkH('map', t('more.map')) + chkH('rec', t('more.rec')) +
+        rowH(t('set.partial'), segH('partial', [['point', t('set.partialPoint')], ['ctrl', t('set.partialCtrl')]])) +
+        chkH('hold', t('set.hold')) +
+        numH('offRoute', t('set.offRoute'), 'm', 15, 200) + numH('navAcc', t('set.navAcc'), 'm', 10, 200),
+        t('set.navNote')) +
+
+      grpH(t('set.rec'), chkH('markFx', t('set.markFx')) + numH('recAcc', t('set.recAcc'), 'm', 5, 100), t('set.recNote')) +
+
+      grpH(t('set.map'),
+        rowH(t('set.layer'), segH('layer', [['osm', t('fab.map')], ['sat', t('fab.sat')]])) +
+        rowH(t('set.drawMode'), segH('drawSnap', [[true, t('draw.snap')], [false, t('draw.line')]])) +
+        '<div class="set-row"><span class="set-lbl" id="sTiles">' + t('set.tilesCounting') + '</span><button type="button" id="sTilesClear">' + t('set.tilesClear') + '</button></div>') +
+
+      grpH(t('set.data'),
+        chkH('backup', t('set.backupRemind')) +
+        '<p class="note" id="sBackupInfo">' + (META.backupAt ? t('set.lastBackup', { d: new Date(META.backupAt).toLocaleString(LANG === 'th' ? 'th-TH' : 'en-GB') }) : t('set.neverBackup')) + '</p>' +
+        '<button type="button" id="sBackup">' + t('file.saveJson') + '</button>' +
+        '<p class="note" id="sStore"></p>') +
+
+      grpH(t('set.about'),
+        '<div class="kv"><span>' + t('set.version') + '</span><b>' + APP_VER + '</b></div>' +
+        '<button type="button" id="sUpdate">' + t('set.checkUpdate') + '</button>');
+
+    var body = $('setBody');
+    body.querySelectorAll('[data-seg]').forEach(function (g) {
+      g.onclick = function (e) {
+        var b = e.target.closest('[data-v]'); if (!b) return;
+        var k = g.dataset.seg, v = b.dataset.v;
+        CFG[k] = v === 'true' ? true : v === 'false' ? false : /^\d+$/.test(v) ? +v : v;
+        cfgChanged(k); renderSettings();
+      };
+    });
+    $('sLang').onclick = function (e) { var b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang); };
+    body.querySelectorAll('[data-chk]').forEach(function (c) { c.onchange = function () { CFG[c.dataset.chk] = c.checked; cfgChanged(c.dataset.chk); }; });
+    body.querySelectorAll('[data-num]').forEach(function (inp) {
+      inp.onchange = function () {
+        var v = parseFloat(inp.value), lo = +inp.dataset.min, hi = +inp.dataset.max;
+        if (!(v >= lo && v <= hi)) { toast(t('set.range', { a: lo, b: hi })); inp.value = CFG[inp.dataset.num]; return; }
+        CFG[inp.dataset.num] = Math.round(v); cfgChanged(inp.dataset.num);
+      };
+    });
+    body.querySelectorAll('[data-alert]').forEach(function (inp) {
+      inp.onchange = function () {
+        var a = (CFG.alerts || DEF.alerts).slice(), v = parseFloat(inp.value);
+        a[+inp.dataset.alert] = v > 0 && v <= 2000 ? Math.round(v) : 0;
+        if (!a.some(function (x) { return x > 0; })) { toast(t('set.alertNeed')); inp.value = (CFG.alerts || [])[+inp.dataset.alert] || ''; return; }
+        CFG.alerts = a; cfgChanged('alerts');
+      };
+    });
+    $('sClockSet').onclick = function () {
+      var v = $('sClockIn').value; if (!v) return toast(t('set.clockNeed'));
+      var hm = v.split(':'), now = new Date(), d = new Date(now);
+      d.setHours(+hm[0], +hm[1], +(hm[2] || 0), 0);
+      var o = d - now; if (o > 43200000) o -= 86400000; else if (o < -43200000) o += 86400000;
+      CFG.clockOffset = o; cfgChanged('clockOffset'); renderSettings(); toast(t('set.clockDone', { t: fmtTod(rallyNow()) }));
+    };
+    body.querySelectorAll('[data-off]').forEach(function (b) {
+      b.onclick = function () { var d = +b.dataset.off; CFG.clockOffset = d ? (CFG.clockOffset || 0) + d : 0; cfgChanged('clockOffset'); renderSettings(); };
+    });
+    $('sBackup').onclick = function () { backupJson(); renderSettings(); };
+    $('sTilesClear').onclick = function () {
+      if (!window.caches) return;
+      if (!confirm(t('set.tilesConfirm'))) return;
+      caches.delete('rb-tiles').then(function () { renderSettings(); toast(t('set.tilesCleared')); });
+    };
+    $('sUpdate').onclick = checkForUpdate;
+    if (window.caches) caches.open('rb-tiles').then(function (c) { return c.keys(); }).then(function (k) { if ($('sTiles')) $('sTiles').textContent = t('set.tiles', { n: k.length }); }).catch(function () {});
+    else $('sTiles').textContent = '';
+    if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function (e) {
+      if ($('sStore')) $('sStore').textContent = t('set.storage', { mb: ((e.usage || 0) / 1048576).toFixed(1) });
+    }).catch(function () {});
+  }
+  function cfgChanged(k) {
+    saveCfg();
+    if (k === 'layer') setLayer(CFG.layer === 'sat');
+    if ((k === 'offRoute' || k === 'navAcc') && N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
+    if (k === 'map') setTimeout(function () { map.invalidateSize(); }, 60);
+    if (k === 'alerts') N.alerted = {};
+    applyNight(); renderAll();
+  }
+  function openSettings() { renderSettings(); $('setDlg').showModal(); }
+  $('bSet').onclick = openSettings;
+  $('setReset').onclick = function () {
+    if (!confirm(t('set.resetConfirm'))) return;
+    var keep = { lang: CFG.lang, clockOffset: CFG.clockOffset };
+    CFG = Object.assign({}, DEF, keep); saveCfg();
+    setLayer(false); if (N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
+    applyNight(); renderAll(); renderSettings(); toast(t('set.resetDone'));
+  };
+  function checkForUpdate() {
+    if (!swReg) return toast(t('set.noUpdate'));
+    toast(t('set.checking'), 3000);
+    swReg.update().then(function () {
+      setTimeout(function () {
+        if (swReg.waiting) offerUpdate(swReg.waiting);
+        else if (!swReg.installing) toast(t('set.upToDate', { v: APP_VER }));
+      }, 1500);
+    }).catch(function () { toast(t('set.updateFail')); });
+  }
+
   // ---------- Render all ----------
   function renderAll() {
     $('projName').value = P.name || '';
     $('storeNote').textContent = store.mem ? t('file.storeMem') : t('file.storeOk');
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec();
   }
+  setLayer(CFG.layer === 'sat');
   applyI18n(); renderAll(); fitStage();
   if (R.startT) toast(t('rec.restored'), 4000);
+  else if (CFG.backup && P.stages.length && META.dirtySince && Date.now() - META.dirtySince > 86400000) {
+    toast(t('backup.remind'), 15000); $('toast').onclick = function () { $('toast').hidden = true; backupJson(); };
+  }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
 
   // ---------- Service worker ----------
   if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
-    var offerUpdate = function (w) {
+    offerUpdate = function (w) {
       if (!w || !navigator.serviceWorker.controller) return;
       toast(t('toast.update'), 600000);
       $('toast').onclick = function () { w.postMessage('skip'); };
     };
     navigator.serviceWorker.register('sw.js').then(function (reg) {
+      swReg = reg;
       // a version downloaded while the app was closed waits here; offer it on every open
       if (reg.waiting) offerUpdate(reg.waiting);
       reg.addEventListener('updatefound', function () {

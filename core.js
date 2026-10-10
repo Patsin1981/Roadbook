@@ -292,7 +292,7 @@
     var prev = 0;
     sortedPoints(stage).forEach(function (p, i) {
       var km = p.d * f / 1000;
-      rows.push([stage.name, i + 1, km.toFixed(2), (km - prev).toFixed(2), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', p.lat.toFixed(6), p.lon.toFixed(6)]);
+      rows.push([stage.name, i + 1, km.toFixed(3), (km - prev).toFixed(3), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', p.lat.toFixed(6), p.lon.toFixed(6)]);
       prev = km;
     });
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
@@ -303,7 +303,7 @@
     stages.forEach(function (st) {
       var f = st.factor || 1;
       sortedPoints(st).forEach(function (p, i) {
-        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(st.name + ' #' + (i + 1) + ' ' + typeLabel(p)) + '</name><desc>' + esc((p.d * f / 1000).toFixed(2) + ' km ' + (p.time ? p.time + ' ' : '') + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
+        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(st.name + ' #' + (i + 1) + ' ' + typeLabel(p)) + '</name><desc>' + esc((p.d * f / 1000).toFixed(3) + ' km ' + (p.time ? p.time + ' ' : '') + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
       });
     });
     stages.forEach(function (st) {

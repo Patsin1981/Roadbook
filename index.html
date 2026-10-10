@@ -24,6 +24,7 @@
     <button role="tab" data-mode="nav" aria-selected="false" data-i18n="mode.nav"></button>
   </div>
   <select id="stageSel" data-i18n-aria="stage.select"></select>
+  <button id="bSet" class="gear" data-i18n-aria="set.title"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
 </header>
 
 <main>
@@ -54,6 +55,7 @@
       <button class="trip-cell partial" id="partialCell"><span class="lbl" data-i18n="nav.partial"></span><span class="mid" id="dPartial">-.--</span></button>
     </div>
     <div class="status"><span id="dGps"></span><span id="dSpeed">-- km/h</span><span id="dRec"></span></div>
+    <div class="clockrow"><span class="clock" id="dClock">--:--:--</span><span class="due" id="dDue"></span></div>
     <div class="offroute" id="dOff" hidden><span data-i18n="nav.offroute"></span> <span id="dOffM"></span></div>
     <div class="rb-box next" id="dNext">
       <div class="rb-km"><span class="to" id="dNextIn">--</span><span class="at" id="dNextKm"></span></div>
@@ -116,10 +118,6 @@
     <div class="tabpane" id="tab-stage" hidden></div>
     <div class="tabpane" id="tab-file" hidden>
       <div class="group">
-        <h3 data-i18n="file.lang"></h3>
-        <div class="seg wide" id="langSeg"></div>
-      </div>
-      <div class="group">
         <h3 data-i18n="file.import"></h3>
         <label class="btn"><span data-i18n="file.importGpx"></span><input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
         <label class="btn"><span data-i18n="file.openJson"></span><input type="file" id="inJson" accept=".json,application/json" hidden></label>
@@ -138,7 +136,6 @@
         <button id="bNewProj" class="danger-btn" data-i18n="file.newProj"></button>
         <button id="bInstall" hidden class="primary" data-i18n="file.install"></button>
         <p class="note" id="storeNote"></p>
-        <p class="note">Rally Roadbook v1.1.1</p>
       </div>
     </div>
   </section>
@@ -194,19 +191,23 @@
 <dialog id="moreDlg">
   <form method="dialog" class="dlg">
     <h3 data-i18n="more.title"></h3>
-    <label class="check"><input type="checkbox" id="oMap" checked> <span data-i18n="more.map"></span></label>
-    <label class="check"><input type="checkbox" id="oSound" checked> <span data-i18n="more.sound"></span></label>
-    <label class="check"><input type="checkbox" id="oVib" checked> <span data-i18n="more.vib"></span></label>
-    <label class="check"><input type="checkbox" id="oNight"> <span data-i18n="more.night"></span></label>
-    <label class="check"><input type="checkbox" id="oRec" checked> <span data-i18n="more.rec"></span></label>
     <div class="row2">
       <button type="button" id="oTsdReset" data-i18n="more.tsdReset"></button>
       <button type="button" id="oOffReset" data-i18n="more.offReset"></button>
       <button type="button" id="oLog" data-i18n="more.log"></button>
       <button type="button" id="oLogClear" data-i18n="more.logClear"></button>
     </div>
-    <p class="note" data-i18n="more.note"></p>
+    <button type="button" id="oSet" data-i18n="set.open"></button>
     <div class="dlg-foot"><span class="spacer"></span><button value="ok" class="primary" data-i18n="common.close"></button></div>
+  </form>
+</dialog>
+
+<!-- Settings -->
+<dialog id="setDlg" class="full">
+  <form method="dialog" class="dlg">
+    <div class="set-head"><h2 data-i18n="set.title"></h2><button value="ok" class="primary" data-i18n="common.close"></button></div>
+    <div id="setBody"></div>
+    <div class="dlg-foot"><button type="button" id="setReset" data-i18n="set.reset"></button><span class="spacer"></span><button value="ok" class="primary" data-i18n="common.close"></button></div>
   </form>
 </dialog>
 
