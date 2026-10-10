@@ -217,6 +217,12 @@ button:disabled{opacity:.45;cursor:default}
 .fin-marks{margin:0;font-size:15px}
 dialog #toast{position:fixed}
 
+/* Stage kinds */
+.kinds{flex-wrap:wrap}
+.kinds button{display:flex;align-items:center;gap:6px;justify-content:center;font-size:14px;padding:0 8px}
+.kdot{width:12px;height:12px;border-radius:2px;border:1.5px solid #000;flex:none}
+.dlg.ask p{white-space:pre-line}
+
 /* Symbols, roundabout, road type */
 .road-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #ptRound[aria-pressed=true],#ptRoad button[aria-pressed=true]{background:var(--mark);color:#000;border-color:#000}

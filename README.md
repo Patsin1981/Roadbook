@@ -27,6 +27,14 @@ GPS ของ browser ใช้ได้เฉพาะเว็บที่เ�
 3. ตอนกด "เริ่ม GPS" ครั้งแรก ให้อนุญาตตำแหน่งแบบ **แม่นยำ (Precise)**
 4. แนะนำ: ตั้งค่า Android > แอป > Chrome > แบตเตอรี่ > **ไม่จำกัด** เพื่อไม่ให้ระบบลดความถี่ GPS
 
+## มีอะไรใหม่ใน v1.5
+
+- **ชนิดช่วง** (แท็บ Stage): SS (แดง) / Free run (น้ำเงิน) / Service / Parc fermé / ทางอพยพ (เหลือง) สีตามแบบ WRC
+- แผนที่แสดง**ทุกช่วงพร้อมกัน ต่อกันเป็นเส้นเดียว** ช่วงที่เลือกเส้นหนา ถ้าเส้น recce ขาด (หยุดบันทึกตอนเข้า Service / Parc fermé) มีเส้นประสีเทาเชื่อมให้เห็น แต่ไม่นับระยะ
+- จุดควบคุมใหม่: Service IN/OUT, Parc fermé IN/OUT, Regroup IN/OUT
+- **แบ่งช่วงอัตโนมัติ** ที่ START / FINISH / Service / Parc fermé / Regroup ระยะแต่ละช่วงเริ่ม 0 แบบ WRC และ**แบ่งที่จุดนี้**ในหน้าแก้จุด
+- Excel: หน้า SS ช่อง Direction ถมฟ้า มีระยะถึง SS Finish ในกล่อง และแถบ SS ขอบหน้า, หน้า Overview เฉพาะ SS พร้อมเส้น free run หัวท้าย, ช่วง Service / Parc fermé ไม่มีหน้า roadbook
+
 ## มีอะไรใหม่ใน v1.4
 
 - **ส่งออก Excel ตามฟอร์ม SS Form** (แท็บ ไฟล์): 1 stage = หน้า Overview + หน้า roadbook, รูป tulip, สูตร Total / Distance regress / Distance / Average speed, หน้าละ 5 กล่อง, "Next" + "TURN QUICKLY", กระดาษ A5/A4, พิกัด N 15° 30.123' หรือทศนิยม, ทศนิยมระยะตามตั้งค่า

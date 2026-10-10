@@ -2,10 +2,15 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.4.4';
+  var APP_VER = '1.5.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
-  var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
+  var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
+  // WRC map colours: special stage red, road section blue, evacuation yellow; service / parc fermé are marked by their controls
+  var KINDS = ['ss', 'liaison', 'service', 'pf', 'evac'];
+  var KIND_COLOR = { ss: '#D0021B', liaison: '#0050B3', service: '#0050B3', pf: '#0050B3', evac: '#E6B800' };
+  function kindOf(st) { return st && KINDS.indexOf(st.kind) >= 0 ? st.kind : 'ss'; }
+  function stageColor(st) { return KIND_COLOR[kindOf(st)]; }
   var BRANCH_SET = [-135, -90, -45, 0, 45, 90, 135];
   var OSRM = 'https://router.project-osrm.org/route/v1/driving/';
 
@@ -118,7 +123,7 @@
   $('askIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); $('askOk').click(); } };
   $('askDlg').addEventListener('cancel', function (e) { e.preventDefault(); askDone(null); });
 
-  function typeName(type) { return type === 'TULIP' ? 'Tulip' : type === 'DANGER' ? t('type.danger') : type === 'INFO' ? 'Info' : type; }
+  function typeName(type) { return type === 'TULIP' ? 'Tulip' : type === 'DANGER' ? t('type.danger') : type === 'INFO' ? 'Info' : RB.ZONE_CODES[type] ? t('type.' + type) : type; }
   function fmtClock(s) { s = Math.max(0, Math.floor(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' : '') + (m < 10 && h ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x; }
 
   // ---------- Project ----------
@@ -145,7 +150,7 @@
   function fac(st) { return st && st.factor > 0 ? st.factor : 1; }
   function pts(st) { return RB.sortedPoints(st); }
   function addStage(name, track, points) {
-    var st = { id: uid(), name: name, color: COLORS[P.stages.length % COLORS.length], track: track, factor: 1, tsd: [], points: points || [] };
+    var st = { id: uid(), name: name, kind: 'ss', track: track, factor: 1, tsd: [], points: points || [] };
     P.stages.push(st); save(); return st;
   }
   function nextStageName() { return 'SS' + (P.stages.length + 1); }
@@ -205,11 +210,22 @@
 
   function drawTracks() {
     gTracks.clearLayers();
-    P.stages.forEach(function (st) { if (st.id !== S.stageId) L.polyline(st.track, { color: '#666', weight: 3, opacity: .6, interactive: false }).addTo(gTracks); });
+    // every leg in its WRC colour; where one leg ends away from where the next starts (recording paused at
+    // service / parc fermé) a thin dashed grey line shows the connection — it is never counted as distance
+    P.stages.forEach(function (st, i) {
+      var nx = P.stages[i + 1];
+      if (nx && st.track.length && nx.track.length) {
+        var a = st.track[st.track.length - 1], b = nx.track[0], gap = RB.hav(a, b);
+        if (gap > 20 && gap < 50000) L.polyline([a, b], { color: '#555', weight: 2, dashArray: '4 6', opacity: .8, interactive: false }).addTo(gTracks);
+      }
+      if (st.id === S.stageId) return;
+      L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
+      L.polyline(st.track, { color: stageColor(st), weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks);
+    });
     var st = stage();
     if (st) {
-      L.polyline(st.track, { color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(gTracks);
-      L.polyline(st.track, { color: st.color || COLORS[0], weight: 5, interactive: false }).addTo(gTracks);
+      L.polyline(st.track, { color: '#fff', weight: 10, opacity: .95, interactive: false }).addTo(gTracks);
+      L.polyline(st.track, { color: stageColor(st), weight: 6, interactive: false }).addTo(gTracks);
     }
   }
   // ---------- Map pins with label decluttering ----------
@@ -413,6 +429,45 @@
     });
   }
 
+  // ---------- Splitting into legs ----------
+  function legName(sg) {
+    var lab = function (p) { return p ? (p.code || typeName(p.type)) : ''; };
+    if (sg.kind === 'ss') return lab(sg.startP) || 'SS';
+    if (sg.kind === 'service') return t('kind.service');
+    if (sg.kind === 'pf') return lab(sg.startP) || t('kind.pf');
+    return (lab(sg.startP) || 'Start') + ' → ' + (lab(sg.endP) || 'End');
+  }
+  function replaceStage(st, parts) {
+    var idx = P.stages.indexOf(st);
+    var made = parts.map(function (pt) {
+      pt.points.forEach(function (q) { q.id = uid(); });
+      return { id: uid(), name: pt.name, kind: pt.kind, color: KIND_COLOR[pt.kind], track: pt.track, factor: st.factor || 1, tsd: [], points: pt.points, section: st.section, leg: st.leg };
+    });
+    P.stages.splice.apply(P.stages, [idx, 1].concat(made));
+    save(); selectStage(made[0].id, true);
+    return made;
+  }
+  function autoSplit(st) {
+    var plan = RB.planSplit(st), f = fac(st);
+    if (plan.length < 2) return toast(t('split.none'), 5000);
+    var list = plan.map(function (sg, i) { return (i + 1) + '. ' + t('kind.' + sg.kind) + '  ' + legName(sg) + '  ' + fmtKm((sg.b - sg.a) * f / 1000) + ' km'; }).join('\n');
+    ask({ title: t('split.confirmTitle', { n: plan.length }), body: list + '\n\n' + t('split.confirmNote'), ok: t('split.go') }).then(function (ok) {
+      if (!ok) return;
+      var parts = plan.map(function (sg) { var r = RB.sliceStage(st, sg.a, sg.b); return { name: legName(sg), kind: sg.kind, track: r.track, points: r.points }; });
+      replaceStage(st, parts); toast(t('split.done', { n: parts.length }), 4000);
+    });
+  }
+  function splitAt(st, d) {
+    var L0 = lenOf(st);
+    if (d < 5 || d > L0 - 5) return toast(t('split.edge'));
+    ask({ title: t('split.hereTitle'), body: t('split.hereBody', { km: fmtKm(d * fac(st) / 1000) }), ok: t('split.go') }).then(function (ok) {
+      if (!ok) return;
+      var a = RB.sliceStage(st, 0, d), b = RB.sliceStage(st, d, L0), k = kindOf(st);
+      if ($('ptDlg').open) $('ptDlg').close();
+      replaceStage(st, [{ name: st.name + ' (1)', kind: k, track: a.track, points: a.points }, { name: st.name + ' (2)', kind: k, track: b.track, points: b.points }]);
+    });
+  }
+
   // ---------- Stage panel ----------
   function renderStagePanel() {
     var el = $('tab-stage'), st = stage();
@@ -423,7 +478,9 @@
     }).join('');
     el.innerHTML =
       '<div class="group"><label class="field">' + t('stage.name') + '<input id="sName" value="' + RB.esc(st.name) + '"></label>' +
-      '<div class="colors">' + COLORS.map(function (c) { return '<button style="background:' + c + '" data-color="' + c + '" aria-pressed="' + (st.color === c) + '" aria-label="' + c + '"></button>'; }).join('') + '</div>' +
+      '<span class="set-lbl">' + t('kind.label') + '</span><div class="seg wide kinds">' + KINDS.map(function (k) {
+        return '<button type="button" data-kind="' + k + '" aria-pressed="' + (kindOf(st) === k) + '"><i class="kdot" style="background:' + KIND_COLOR[k] + '"></i>' + t('kind.' + k) + '</button>';
+      }).join('') + '</div>' +
       '<div class="row2"><label class="field">Section<input id="sSection" value="' + RB.esc(st.section || '') + '"></label><label class="field">Leg<input id="sLeg" value="' + RB.esc(st.leg || '') + '"></label></div>' +
       '<div class="kv"><span>' + t('stage.lenGps') + '</span><b>' + (L0 / 1000).toFixed(3) + ' km</b><span>' + t('stage.lenAdj') + '</span><b>' + (L0 * f / 1000).toFixed(3) + ' km</b><span>' + t('stage.nPoints') + '</span><b>' + st.points.length + '</b></div></div>' +
 
@@ -436,6 +493,8 @@
       '<label class="field">' + t('stage.detThr') + '<select id="sThr"><option value="25">25°</option><option value="35" selected>35°</option><option value="50">50°</option></select></label>' +
       '<div class="row2"><button id="sDetect">' + t('stage.detShow') + '</button><button id="sClear">' + t('stage.detHide') + '</button></div>' +
       '<button id="sAddAll">' + t('stage.detAddAll') + '</button><p class="note" id="sDetNote">' + t('stage.detNote') + '</p></div>' +
+
+      '<div class="group"><h3>' + t('split.title') + '</h3><button id="sSplit">' + t('split.auto') + '</button><p class="note">' + t('split.note') + '</p></div>' +
 
       '<div class="group"><h3>' + t('stage.trimTitle') + '</h3>' +
       '<div class="row2"><label class="field">' + t('stage.trimFrom') + '<input id="tFrom" inputmode="decimal" value="0.00"></label><label class="field">' + t('stage.trimTo') + '<input id="tTo" inputmode="decimal" value="' + (L0 * f / 1000).toFixed(2) + '"></label></div>' +
@@ -452,7 +511,8 @@
     $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
     $('sOverview').onclick = exportOverviewPng;
     $('sLeg').onchange = function () { st.leg = this.value.trim(); save(); };
-    el.querySelectorAll('[data-color]').forEach(function (b) { b.onclick = function () { st.color = b.dataset.color; save(); drawTracks(); renderStagePanel(); }; });
+    el.querySelectorAll('[data-kind]').forEach(function (b) { b.onclick = function () { st.kind = b.dataset.kind; save(); drawTracks(); renderStagePanel(); }; });
+    $('sSplit').onclick = function () { autoSplit(st); };
     $('sFac').onchange = function () {
       var v = parseFloat(this.value); if (!(v > 0.8 && v < 1.2)) { toast(t('err.factorRange')); this.value = f.toFixed(4); return; }
       st.factor = v; save(); renderAll();
@@ -538,6 +598,7 @@
     };
     $('ptAngle').oninput = function () { D.angle = +this.value; syncDlg(true); };
     $('ptRound').onclick = function () { D.round = !D.round; syncDlg(); };
+    $('ptSplit').onclick = function () { splitAt(stage(), D.d); };
     $('ptRoad').onclick = function (e) { var b = e.target.closest('[data-road]'); if (b) { D.road = b.dataset.road; syncDlg(); } };
     $('ptSyms').onclick = function (e) {
       var b = e.target.closest('[data-sym]'); if (!b) return;
@@ -579,6 +640,7 @@
     DautoCode = isNew && !!D.code;
     $('ptTh').value = D.th || ''; $('ptEn').value = D.en || ''; $('ptNote').value = D.note || '';
     $('ptDel').textContent = isNew ? t('pt.discard') : t('pt.delete');
+    $('ptSplit').hidden = isNew;
     $('ptSymWrap').open = !!(D.sym && D.sym.length);
     syncDlg(); showDraft(); $('ptDlg').showModal();
   }
@@ -861,7 +923,9 @@
     });
   }
   function renderOverview(st, w, h) {
-    var opts = { track: st.track, labels: overviewLabels(st), color: st.color, layer: S.sat ? 'sat' : 'osm', w: w, h: h };
+    var i = P.stages.indexOf(st), extra = [P.stages[i - 1], P.stages[i + 1]].filter(function (x) { return x && kindOf(x) === 'liaison'; })
+      .map(function (x) { return { track: x.track, color: stageColor(x) }; });
+    var opts = { track: st.track, labels: overviewLabels(st), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra };
     var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
     return fontReady.then(function () { return RBO.render(opts); }).then(function (cv) {
       try { cv.toDataURL('image/png'); return cv; } // a tile without CORS would block reading the picture
@@ -912,7 +976,7 @@
       var img = new Image();
       img.onload = function () {
         var c = document.createElement('canvas'); c.width = c.height = size;
-        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, size, size); g.drawImage(img, 0, 0, size, size);
+        var g = c.getContext('2d'); g.drawImage(img, 0, 0, size, size); // transparent, so the SS tint shows through
         resolve(c.toDataURL('image/png').split(',')[1]);
       };
       img.onerror = function () { resolve('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='); };

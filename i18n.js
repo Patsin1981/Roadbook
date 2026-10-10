@@ -144,6 +144,14 @@ var I18N = {
     'ov.partial': 'ภาพแผนที่บางส่วนโหลดไม่ได้ (ไม่มีเน็ต?) เส้นทางและป้ายยังครบ ลองใหม่ตอนมีเน็ต', 'xl.noOverview': 'สร้างภาพ Overview ไม่ได้',
     'pt.round': 'วงเวียน', 'pt.tarmac': 'ลาดยาง', 'pt.gravel': 'ลูกรัง', 'pt.symbols': 'เครื่องหมาย',
     'sym.gCtrl': 'จุดควบคุม / พื้นที่', 'sym.gRoad': 'ถนน / ป้าย', 'sym.gMark': 'สิ่งสังเกต',
+    'type.SVCIN': 'Service IN', 'type.SVCOUT': 'Service OUT', 'type.PFIN': 'Parc fermé IN', 'type.PFOUT': 'Parc fermé OUT', 'type.RGIN': 'Regroup IN', 'type.RGOUT': 'Regroup OUT',
+    'kind.label': 'ชนิดช่วง', 'kind.ss': 'SS', 'kind.liaison': 'Free run', 'kind.service': 'Service', 'kind.pf': 'Parc fermé', 'kind.evac': 'ทางอพยพ',
+    'split.title': 'แบ่งช่วง', 'split.auto': 'แบ่งช่วงอัตโนมัติ (ตาม SS START / FINISH / Service / Parc fermé)',
+    'split.note': 'ใช้กับเส้น recce ยาวทั้งวัน แอปตัดที่จุด START, FINISH, Service IN/OUT, Parc fermé IN/OUT, Regroup IN/OUT ได้ช่วง SS (แดง) และ Free run (น้ำเงิน) ระยะแต่ละช่วงเริ่ม 0 ใหม่แบบ WRC จุดที่รอยต่ออยู่ทั้งท้ายช่วงก่อนและต้นช่วงถัดไป',
+    'split.none': 'ยังไม่มีจุดให้แบ่ง ใส่จุด START / FINISH / Service IN-OUT / Parc fermé IN-OUT ก่อน',
+    'split.confirmTitle': 'แบ่งเป็น {n} ช่วง?', 'split.confirmNote': 'stage เดิมจะถูกแทนที่ด้วยช่วงเหล่านี้ ถ้ายังไม่ได้สำรองข้อมูล แนะนำให้สำรองก่อน',
+    'split.go': 'แบ่ง', 'split.done': 'แบ่งเป็น {n} ช่วงแล้ว', 'split.here': 'แบ่ง stage ที่จุดนี้', 'split.hereTitle': 'แบ่ง stage ที่จุดนี้?',
+    'split.hereBody': 'ตัดเป็น 2 ช่วงที่ {km} km ช่วงหลังเริ่มนับ 0 ใหม่', 'split.edge': 'จุดนี้อยู่ที่ต้นหรือท้ายเส้นทาง แบ่งไม่ได้',
     'toast.tsdReset': 'รีเซ็ต TSD แล้ว', 'toast.offReset': 'ล้างค่า Sync แล้ว', 'toast.update': 'มีเวอร์ชันใหม่ แตะที่นี่เพื่อโหลด'
   },
 
@@ -291,6 +299,14 @@ var I18N = {
     'ov.partial': 'Some map images could not load (offline?). Route and labels are complete; try again online', 'xl.noOverview': 'Overview picture unavailable',
     'pt.round': 'Roundabout', 'pt.tarmac': 'Tarmac', 'pt.gravel': 'Gravel', 'pt.symbols': 'Symbols',
     'sym.gCtrl': 'Controls / zones', 'sym.gRoad': 'Roads / signs', 'sym.gMark': 'Landmarks',
+    'type.SVCIN': 'Service IN', 'type.SVCOUT': 'Service OUT', 'type.PFIN': 'Parc fermé IN', 'type.PFOUT': 'Parc fermé OUT', 'type.RGIN': 'Regroup IN', 'type.RGOUT': 'Regroup OUT',
+    'kind.label': 'Leg type', 'kind.ss': 'SS', 'kind.liaison': 'Free run', 'kind.service': 'Service', 'kind.pf': 'Parc fermé', 'kind.evac': 'Evacuation',
+    'split.title': 'Split into legs', 'split.auto': 'Split automatically (at SS START / FINISH / Service / Parc fermé)',
+    'split.note': 'For a whole-day recce. Cuts at START, FINISH, Service IN/OUT, Parc fermé IN/OUT and Regroup IN/OUT into SS (red) and Free run (blue) legs. Each leg restarts at 0 like WRC; boundary controls end one leg and start the next',
+    'split.none': 'Nothing to split at yet. Add START / FINISH / Service IN-OUT / Parc fermé IN-OUT points first',
+    'split.confirmTitle': 'Split into {n} legs?', 'split.confirmNote': 'The current stage will be replaced by these legs. Back up first if you have not',
+    'split.go': 'Split', 'split.done': 'Split into {n} legs', 'split.here': 'Split stage here', 'split.hereTitle': 'Split the stage here?',
+    'split.hereBody': 'Cut into 2 legs at {km} km; the second restarts at 0', 'split.edge': 'This point is at the start or end of the route and cannot be split',
     'toast.tsdReset': 'TSD reset', 'toast.offReset': 'Sync cleared', 'toast.update': 'A new version is ready. Tap to load it'
   }
 };

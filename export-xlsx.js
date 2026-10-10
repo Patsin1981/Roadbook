@@ -53,9 +53,12 @@
 
     var ev = ctx.event || { logos: [] };
     ctx.stages.forEach(function (st) {
+      var kind = st.kind || 'ss';
+      if (kind === 'service' || kind === 'pf') return; // zones have no roadbook page of their own (WRC)
+      var isSS = kind === 'ss';
       var f = st.factor > 0 ? st.factor : 1;
       // ---- Overview sheet (same order as the event book: overview, then the stage roadbook) ----
-      if (ctx.overview) {
+      if (ctx.overview && isSS) {
         var ov = wb.addWorksheet(sheetName('Overview ' + st.name, used), {
           pageSetup: {
             paperSize: cfg.paper === 'A4' ? 9 : 11, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true,
@@ -106,7 +109,7 @@
       ws.headerFooter.oddFooter = '&C&"Tahoma"&9' + (ctx.project.name || '') + '  ' + st.name + '   &P / &N';
       ws.columns = [
         { width: 1.5 }, { width: 9.9 }, { width: 13.6 }, { width: 11 }, { width: 21.4 },
-        { width: 2.4 }, { width: 16.3 }, { width: 9.2 }, { width: 9 }, { width: 11 }, { width: 13 }
+        { width: 2.4 }, { width: 16.3 }, { width: 9.2 }, { width: 9 }, { width: 11 }, { width: 13 }, { width: isSS ? 4.5 : 1 }
       ];
       // ---- header block (rows 2-4) ----
       var ctrls = ps.filter(ctx.isControl);
@@ -175,7 +178,26 @@
         cNo.value = noTxt;
         cellStyle(cNo, { size: pageEnd ? 11 : 14, bold: true, v: pageEnd ? 'top' : 'middle' });
         if (pageEnd) ws.getRow(r).addPageBreak();
-        ws.getCell(r, 5).border = BOX;
+        var dir = ws.getCell(r, 5);
+        dir.border = BOX;
+        if (isSS) {
+          // WRC special-stage pages: tinted direction box with the distance still to the SS finish in its corner
+          dir.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCEFFA' } };
+          dir.value = r === last ? 0 : { formula: 'K' + r, result: +((ps[ps.length - 1].d - p.d) * f / 1000).toFixed(3) };
+          dir.numFmt = fmt;
+          dir.font = { name: FONT, size: 13, bold: true };
+          dir.alignment = { horizontal: 'right', vertical: 'bottom' };
+        }
+        if (isSS && (i % ROWS_PER_PAGE === 0)) {
+          // "SS" band on the page edge so the stage is found quickly when flipping the book
+          var r2 = Math.min(r + 1, last);
+          if (r2 > r) ws.mergeCells(r, 12, r2, 12);
+          var band = ws.getCell(r, 12);
+          band.value = st.name;
+          band.font = { name: FONT, size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+          band.alignment = { horizontal: 'center', vertical: 'middle', textRotation: 90 };
+          band.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B2A6B' } };
+        }
         // information: danger marks, control code + time, instruction, note, GPS at controls
         ws.mergeCells(r, 6, r, 10);
         var lines = [];
@@ -206,7 +228,8 @@
         jobs.push(ctx.tulipPng(p).then(function (b64) {
           var id = wb.addImage({ base64: b64, extension: 'png' });
           // E column ≈ 155 px wide, 120 pt row = 160 px high
-          ws.addImage(id, { tl: { col: 4.08, row: r - 1 + 0.06 }, ext: { width: 145, height: 145 }, editAs: 'oneCell' });
+          var sz = isSS ? 128 : 145; // leave the bottom-right corner free for the distance-to-finish on SS pages
+          ws.addImage(id, { tl: { col: 4.05, row: r - 1 + 0.04 }, ext: { width: sz, height: sz }, editAs: 'oneCell' });
         }));
       });
       if (!ps.length) { ws.getCell('F8').value = t('xl.noPoints'); }

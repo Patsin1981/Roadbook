@@ -1,5 +1,5 @@
 /* Rally Roadbook service worker */
-var VER = 'rb-v1.4.4';
+var VER = 'rb-v1.5.0';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'i18n.js', 'symbols.js', 'overview.js', 'export-xlsx.js', 'vendor/exceljs/exceljs.min.js', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png',

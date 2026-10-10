@@ -279,7 +279,8 @@
 
   // ---------- Export ----------
   function csvCell(v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-  var CONTROL_TYPES = ['START', 'FINISH', 'TC', 'PC', 'CP'];
+  var CONTROL_TYPES = ['START', 'FINISH', 'TC', 'PC', 'CP', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
+  var ZONE_CODES = { SVCIN: 'SERVICE IN', SVCOUT: 'SERVICE OUT', PFIN: 'PARC FERME IN', PFOUT: 'PARC FERME OUT', RGIN: 'REGROUP IN', RGOUT: 'REGROUP OUT' };
   function isControl(p) { return CONTROL_TYPES.indexOf(p.type) >= 0; }
   function typeLabel(p) {
     if (p.code) return p.code;
@@ -289,12 +290,40 @@
   // Suggest next code for a control point: TC0,TC1.. / PC1.. / CP1..
   function suggestCode(points, p) {
     if (p.type === 'START' || p.type === 'FINISH') return p.type;
+    if (ZONE_CODES[p.type]) return ZONE_CODES[p.type];
     if (['TC', 'PC', 'CP'].indexOf(p.type) < 0) return '';
     var used = {}, re = new RegExp('^' + p.type + '\\s*(\\d+)', 'i');
     points.forEach(function (q) { if (q !== p && q.id !== p.id && q.code) { var m = re.exec(q.code); if (m) used[+m[1]] = 1; } });
     var n = p.type === 'TC' ? 0 : 1; while (used[n]) n++;
     return p.type + n;
   }
+  // ---------- Splitting a day route into legs (WRC style: each leg runs TC to TC, distance restarts at 0) ----------
+  // What a segment becomes depends on the control that opens it.
+  var AFTER = { START: 'ss', FINISH: 'liaison', SVCIN: 'service', SVCOUT: 'liaison', PFIN: 'pf', PFOUT: 'liaison', RGIN: 'pf', RGOUT: 'liaison' };
+  function sliceStage(stage, a, b) { // copy of [a, b] metres; points on the boundaries are kept in both neighbours
+    var tr = stage.track, cum = buildCum(tr);
+    var out = [pointAt(tr, cum, a)];
+    for (var i = 0; i < tr.length; i++) if (cum[i] > a && cum[i] < b) out.push(tr[i]);
+    out.push(pointAt(tr, cum, b));
+    var pts = (stage.points || []).filter(function (p) { return p.d >= a - 0.5 && p.d <= b + 0.5; })
+      .map(function (p) { var q = JSON.parse(JSON.stringify(p)); q.d = Math.max(0, Math.min(b - a, p.d - a)); return q; });
+    return { track: out.map(function (p) { return [+p[0].toFixed(7), +p[1].toFixed(7)]; }), points: pts };
+  }
+  function planSplit(stage) {
+    var len = buildCum(stage.track); len = len[len.length - 1];
+    var ps = sortedPoints(stage), bounds = ps.filter(function (p) { return AFTER[p.type] && p.d > 5 && p.d < len - 5; });
+    var first = ps[0] && ps[0].d <= 5 ? ps[0] : null;
+    var kind = first && AFTER[first.type] ? AFTER[first.type] : 'liaison';
+    var segs = [], a = 0, startP = first;
+    bounds.forEach(function (bp) {
+      segs.push({ a: a, b: bp.d, kind: kind, startP: startP, endP: bp });
+      a = bp.d; kind = AFTER[bp.type]; startP = bp;
+    });
+    var last = ps.length ? ps[ps.length - 1] : null;
+    segs.push({ a: a, b: len, kind: kind, startP: startP, endP: last && last.d >= len - 5 ? last : null });
+    return segs.filter(function (sg) { return sg.b - sg.a > 1; });
+  }
+
   // Cut track to [fromD, toD] metres; points outside are dropped, kept points shift.
   function trimStage(stage, fromD, toD) {
     var tr = stage.track, cum = buildCum(tr), total = cum[cum.length - 1];
@@ -344,7 +373,8 @@
     pointAt: pointAt, project: project, angleAt: angleAt, detectTurns: detectTurns, parseGPX: parseGPX,
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
-    typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES
+    typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
+    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);

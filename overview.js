@@ -81,6 +81,14 @@
     return Promise.all(jobs).then(function (res) {
       var missing = res.filter(function (x) { return !x; }).length;
       var px = function (lat, lon) { var p = project(lat, lon, z); return { x: p.x - ox, y: p.y - oy }; };
+      // neighbouring road sections (free run before/after the SS), drawn underneath like the WRC SS maps
+      (o.extra || []).forEach(function (ex) {
+        var ep = ex.track.map(function (p) { return px(p[0], p[1]); });
+        [['#ffffff', 11], [ex.color, 5]].forEach(function (st) {
+          g.strokeStyle = st[0]; g.lineWidth = st[1]; g.lineJoin = 'round'; g.lineCap = 'round'; g.beginPath();
+          ep.forEach(function (p, i) { if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.stroke();
+        });
+      });
       var pts = o.track.map(function (p) { return px(p[0], p[1]); });
       // route: white casing then stage colour
       g.lineJoin = 'round'; g.lineCap = 'round';
