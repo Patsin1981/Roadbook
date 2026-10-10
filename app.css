@@ -163,13 +163,16 @@ body.mode-nav.nomap #dash .rb-box{min-height:120px}
 #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:2000;background:#000;color:#fff;padding:10px 16px;border-radius:3px;max-width:92vw;font-weight:600;border:1.5px solid #fff}
 .leaflet-container{font-family:var(--t)}
 /* Control labels on map */
-.ctl-icon{background:none;border:0}
-.ctl-tag{position:absolute;left:-2px;bottom:6px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;background:#FFE14D;color:#000;border:2px solid #000;border-radius:2px;padding:1px 7px 2px;font-family:var(--f);line-height:1.05;box-shadow:0 2px 0 #000}
-.ctl-tag::after{content:"";position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);border:7px solid transparent;border-top-color:#000;border-bottom:0}
+.ctl-icon{background:none;border:0;overflow:visible}
+.ctl-icon .lead{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.ctl-icon .lead line{stroke:#000;stroke-width:2.5}
+.cdot{position:absolute;left:-7px;top:-7px;width:14px;height:14px;border-radius:50%;background:#FFE14D;border:3px solid #000;box-sizing:border-box}
+.cdot.START,.cdot.FINISH{background:#000;border-color:#fff;box-shadow:0 0 0 2px #000}
+.ctl-tag{position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center;white-space:nowrap;background:#FFE14D;color:#000;border:2px solid #000;border-radius:2px;padding:0 7px;font-family:var(--f);line-height:1.05;box-shadow:0 2px 0 #000;box-sizing:border-box}
+.ctl-tag.MULTI{background:#fff;border-style:double;border-width:4px}
 .ctl-tag b{font-weight:800;font-size:18px}
 .ctl-tag span{font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
 .ctl-tag.START,.ctl-tag.FINISH{background:#000;color:#fff}
-.ctl-tag.START::after,.ctl-tag.FINISH::after{border-top-color:#000}
 .ctl-tag.PC,.ctl-tag.CP{background:#fff}
 .ctl-tag.sel{outline:3px solid #0050B3}
 .rb-row.ctrl .tag{background:var(--mark);color:#000;border-color:#000}

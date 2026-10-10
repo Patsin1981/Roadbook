@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.4.2';
+  var APP_VER = '1.4.3';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
@@ -207,28 +207,98 @@
       L.polyline(st.track, { color: st.color || COLORS[0], weight: 5, interactive: false }).addTo(gTracks);
     }
   }
-  function ctrlLabel(p, st) {
-    var km = fmtKm(p.d * fac(st) / 1000);
-    return '<div class="ctl-tag ' + p.type + (S.sel === p.id ? ' sel' : '') + '"><b>' + RB.esc(p.code || p.type) + '</b><span>' + km + ' km</span>' + (p.time ? '<span>' + RB.esc(p.time) + '</span>' : '') + '</div>';
+  // ---------- Map pins with label decluttering ----------
+  // Control labels are laid out in screen space each time the zoom changes:
+  // 1) full label (code + km + time) placed where it doesn't overlap, with a leader line to the point
+  // 2) if anything still overlaps: code-only labels
+  // 3) if still overlapping: nearby controls share one label ("START / FINISH"); tapping it zooms in
+  // Numbered tulip pins that would sit on top of another pin or a label are hidden until you zoom in.
+  var OFF = 100000; // layout is done in shifted, unbounded space so labels of off-screen points still get placed
+  function labelSize(code, lines) {
+    var w = Math.max(code.length * 10.5, Math.max.apply(null, lines.map(function (l) { return l.length * 7.6; }).concat([0]))) + 18;
+    return { w: Math.ceil(w), h: 24 + lines.length * 16 };
+  }
+  function layoutControls(st, ctrls) {
+    var f = fac(st), z = map.getZoom();
+    var base = ctrls.map(function (p) { var q = map.project([p.lat, p.lon], z); return { p: p, x: q.x + OFF, y: q.y + OFF }; });
+    var dots = base.map(function (b) { return { x: b.x - 9, y: b.y - 9, w: 18, h: 18 }; });
+    function attempt(mode, groups) {
+      var items = groups.map(function (g) {
+        var code = g.map(function (b) { return b.p.code || b.p.type; }).join(' / ');
+        var lines = mode === 'full' && g.length === 1 ? [fmtKm(g[0].p.d * f / 1000) + ' km'].concat(g[0].p.time ? [g[0].p.time] : []) : [];
+        var sz = labelSize(code, lines), cx = 0, cy = 0;
+        g.forEach(function (b) { cx += b.x; cy += b.y; });
+        return { g: g, code: code, lines: lines, x: cx / g.length, y: cy / g.length, w: sz.w, h: sz.h, gap: 12 };
+      });
+      RBO.placeLabels(items, 1e12, 1e12, dots);
+      return { items: items, forced: items.filter(function (i) { return i.box.forced || items.some(function (o) { return o !== i && rectsOverlap(i.box, o.box); }); }).length };
+    }
+    var single = base.map(function (b) { return [b]; });
+    var r = attempt('full', single);
+    if (r.forced) r = attempt('code', single);
+    if (r.forced) {
+      // merge controls whose points are within 70 px of each other
+      var groups = [], used = [];
+      base.forEach(function (b, i) {
+        if (used[i]) return; var g = [b]; used[i] = true;
+        base.forEach(function (o, j) { if (!used[j] && Math.hypot(o.x - b.x, o.y - b.y) < 70) { g.push(o); used[j] = true; } });
+        groups.push(g);
+      });
+      r = attempt('code', groups);
+    }
+    return r.items;
+  }
+  function rectsOverlap(a, b) { return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h; }
+  function ctrlIcon(it) {
+    var b = it.box, lx = b.x - it.x, ly = b.y - it.y, single = it.g.length === 1, p = it.g[0].p;
+    var cls = single ? p.type : 'MULTI';
+    var ex = Math.max(lx + 6, Math.min(lx + b.w - 6, 0)), ey = ly > 0 ? ly : ly + b.h < 0 ? ly + b.h : ly + b.h / 2;
+    var html = '<svg class="lead" width="1" height="1"><line x1="0" y1="0" x2="' + ex.toFixed(1) + '" y2="' + ey.toFixed(1) + '"/></svg>' +
+      '<i class="cdot ' + cls + '"></i>' +
+      '<div class="ctl-tag ' + cls + (single && S.sel === p.id ? ' sel' : '') + '" style="left:' + lx.toFixed(1) + 'px;top:' + ly.toFixed(1) + 'px;min-width:' + b.w + 'px;height:' + b.h + 'px">' +
+      '<b>' + RB.esc(it.code) + '</b>' + it.lines.map(function (l) { return '<span>' + RB.esc(l) + '</span>'; }).join('') + '</div>';
+    return L.divIcon({ className: 'ctl-icon', html: html, iconSize: [0, 0], iconAnchor: [0, 0] });
   }
   function drawPins() {
     gPins.clearLayers();
     var st = stage(); if (!st || S.draw) return;
-    pts(st).forEach(function (p, i) {
-      var ctrl = RB.isControl(p);
-      if (S.ctrlOnly && !ctrl && S.mode === 'org') return;
-      var icon = ctrl
-        ? L.divIcon({ className: 'ctl-icon', html: ctrlLabel(p, st), iconSize: null, iconAnchor: [0, 0] })
-        : L.divIcon({ className: '', html: '<div class="pin ' + p.type + (S.sel === p.id ? ' sel' : '') + '">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
-      var m = L.marker([p.lat, p.lon], { draggable: S.mode === 'org', autoPan: true, icon: icon, zIndexOffset: ctrl ? 500 : 0 }).addTo(gPins);
+    var all = pts(st), ctrls = all.filter(RB.isControl), z = map.getZoom();
+    var items = layoutControls(st, ctrls), blocked = [];
+    items.forEach(function (it) {
+      blocked.push(it.box);
+      var single = it.g.length === 1, p = it.g[0].p, b0 = it.g[0];
+      var ll = single ? [p.lat, p.lon] : map.unproject([it.x - OFF, it.y - OFF], z);
+      var m = L.marker(ll, { draggable: single && S.mode === 'org', autoPan: true, icon: ctrlIcon(it), zIndexOffset: 500 }).addTo(gPins);
+      if (single) {
+        m.on('click', function () { if (S.mode === 'org' && !S.draw) { S.sel = p.id; renderRB(); drawPins(); openPoint(p, false); } });
+        m.on('dragend', function () {
+          var q = m.getLatLng(), r = RB.project(st.track, cumOf(st), q.lat, q.lng);
+          p.d = r.d; p.lat = r.lat; p.lon = r.lon; save(); drawPins(); renderRB();
+          toast(t('toast.moved', { km: fmtKm(p.d * fac(st) / 1000) }));
+        });
+      } else {
+        m.on('click', function () { map.fitBounds(L.latLngBounds(it.g.map(function (g) { return [g.p.lat, g.p.lon]; })), { padding: [80, 80], maxZoom: 18 }); });
+      }
+      void b0;
+    });
+    if (S.ctrlOnly && S.mode === 'org') return;
+    var shown = [];
+    all.forEach(function (p, i) {
+      if (RB.isControl(p)) return;
+      var q = map.project([p.lat, p.lon], z), x = q.x + OFF, y = q.y + OFF, r = { x: x - 15, y: y - 15, w: 30, h: 30 };
+      var keep = p.id === S.sel || !(shown.some(function (o) { return Math.hypot(o.x - x, o.y - y) < 26; }) || blocked.some(function (bx) { return rectsOverlap(r, bx); }));
+      if (!keep) return;
+      shown.push({ x: x, y: y });
+      var m = L.marker([p.lat, p.lon], { draggable: S.mode === 'org', autoPan: true, icon: L.divIcon({ className: '', html: '<div class="pin ' + p.type + (S.sel === p.id ? ' sel' : '') + '">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).addTo(gPins);
       m.on('click', function () { if (S.mode === 'org' && !S.draw) { S.sel = p.id; renderRB(); drawPins(); openPoint(p, false); } });
       m.on('dragend', function () {
-        var ll = m.getLatLng(), r = RB.project(st.track, cumOf(st), ll.lat, ll.lng);
-        p.d = r.d; p.lat = r.lat; p.lon = r.lon; save(); drawPins(); renderRB();
+        var ll = m.getLatLng(), r2 = RB.project(st.track, cumOf(st), ll.lat, ll.lng);
+        p.d = r2.d; p.lat = r2.lat; p.lon = r2.lon; save(); drawPins(); renderRB();
         toast(t('toast.moved', { km: fmtKm(p.d * fac(st) / 1000) }));
       });
     });
   }
+  map.on('zoomend', function () { drawPins(); });
   function drawSuggest() {
     gSug.clearLayers();
     var st = stage(); if (!st || S.mode !== 'org') return;
