@@ -259,16 +259,40 @@
 
   // ---------- Export ----------
   function csvCell(v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  var CONTROL_TYPES = ['START', 'FINISH', 'TC', 'PC', 'CP'];
+  function isControl(p) { return CONTROL_TYPES.indexOf(p.type) >= 0; }
   function typeLabel(p) {
+    if (p.code) return p.code;
     if (p.type === 'DANGER') return 'DANGER ' + '!'.repeat(p.danger || 1);
     return p.type;
   }
+  // Suggest next code for a control point: TC0,TC1.. / PC1.. / CP1..
+  function suggestCode(points, p) {
+    if (p.type === 'START' || p.type === 'FINISH') return p.type;
+    if (['TC', 'PC', 'CP'].indexOf(p.type) < 0) return '';
+    var used = {}, re = new RegExp('^' + p.type + '\\s*(\\d+)', 'i');
+    points.forEach(function (q) { if (q !== p && q.id !== p.id && q.code) { var m = re.exec(q.code); if (m) used[+m[1]] = 1; } });
+    var n = p.type === 'TC' ? 0 : 1; while (used[n]) n++;
+    return p.type + n;
+  }
+  // Cut track to [fromD, toD] metres; points outside are dropped, kept points shift.
+  function trimStage(stage, fromD, toD) {
+    var tr = stage.track, cum = buildCum(tr), total = cum[cum.length - 1];
+    fromD = Math.max(0, Math.min(total, fromD)); toD = Math.max(fromD, Math.min(total, toD));
+    var out = [pointAt(tr, cum, fromD)];
+    for (var i = 0; i < tr.length; i++) if (cum[i] > fromD && cum[i] < toD) out.push(tr[i]);
+    out.push(pointAt(tr, cum, toD));
+    out = out.map(function (p) { return [+p[0].toFixed(7), +p[1].toFixed(7)]; });
+    var pts = (stage.points || []).filter(function (p) { return p.d >= fromD - 0.5 && p.d <= toD + 0.5; });
+    pts.forEach(function (p) { p.d = Math.max(0, p.d - fromD); });
+    return { track: out, points: pts };
+  }
   function stageCSV(stage) {
-    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Lat', 'Lon']];
+    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Code', 'Time', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Lat', 'Lon']];
     var prev = 0;
     sortedPoints(stage).forEach(function (p, i) {
       var km = p.d * f / 1000;
-      rows.push([stage.name, i + 1, km.toFixed(2), (km - prev).toFixed(2), typeLabel(p), p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', p.lat.toFixed(6), p.lon.toFixed(6)]);
+      rows.push([stage.name, i + 1, km.toFixed(2), (km - prev).toFixed(2), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', p.lat.toFixed(6), p.lon.toFixed(6)]);
       prev = km;
     });
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
@@ -279,7 +303,7 @@
     stages.forEach(function (st) {
       var f = st.factor || 1;
       sortedPoints(st).forEach(function (p, i) {
-        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(st.name + ' #' + (i + 1) + ' ' + typeLabel(p)) + '</name><desc>' + esc((p.d * f / 1000).toFixed(2) + ' km ' + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
+        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(st.name + ' #' + (i + 1) + ' ' + typeLabel(p)) + '</name><desc>' + esc((p.d * f / 1000).toFixed(2) + ' km ' + (p.time ? p.time + ' ' : '') + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
       });
     });
     stages.forEach(function (st) {
@@ -300,7 +324,7 @@
     pointAt: pointAt, project: project, angleAt: angleAt, detectTurns: detectTurns, parseGPX: parseGPX,
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
-    typeLabel: typeLabel, esc: esc
+    typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);

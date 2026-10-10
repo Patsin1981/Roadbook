@@ -18,67 +18,91 @@
 <body class="mode-org">
 
 <header class="bar">
-  <div class="mode" role="tablist" aria-label="โหมด">
-    <button role="tab" data-mode="org" aria-selected="true">วางเส้นทาง</button>
-    <button role="tab" data-mode="nav" aria-selected="false">นำทาง</button>
+  <div class="mode" role="tablist">
+    <button role="tab" data-mode="org" aria-selected="true" data-i18n="mode.org"></button>
+    <button role="tab" data-mode="rec" aria-selected="false" data-i18n="mode.rec"></button>
+    <button role="tab" data-mode="nav" aria-selected="false" data-i18n="mode.nav"></button>
   </div>
-  <select id="stageSel" aria-label="เลือก stage"></select>
+  <select id="stageSel" data-i18n-aria="stage.select"></select>
 </header>
 
 <main>
-  <!-- Navigator dashboard -->
-  <section id="dash" aria-live="off">
+  <!-- Recce recorder -->
+  <section id="rec" class="dash">
     <div class="trip">
-      <div class="trip-cell" id="totalCell">
-        <span class="lbl">ระยะรวม km</span>
-        <span class="big" id="dTotal">--.--</span>
-      </div>
-      <button class="trip-cell partial" id="partialCell" title="แตะเพื่อตั้งศูนย์ช่วง">
-        <span class="lbl">ช่วง km</span>
-        <span class="mid" id="dPartial">-.--</span>
-      </button>
+      <div class="trip-cell"><span class="lbl" data-i18n="rec.dist"></span><span class="big" id="rDist">0.00</span></div>
+      <div class="trip-cell partial"><span class="lbl" data-i18n="rec.time"></span><span class="mid" id="rTime">0:00</span></div>
     </div>
-    <div class="status" id="dStatus">
-      <span id="dGps">GPS ปิด</span><span id="dSpeed">-- km/h</span><span id="dRec"></span>
+    <div class="status"><span id="rGps"></span><span id="rSpeed">-- km/h</span><span id="rState"></span></div>
+    <div class="marks">
+      <button id="mTurn" class="mark" data-k="turn"><span data-i18n="mark.turn"></span><b id="cTurn">0</b></button>
+      <button id="mDanger" class="mark danger" data-k="danger"><span data-i18n="mark.danger"></span><b id="cDanger">0</b></button>
+      <button id="mCtrl" class="mark ctrl" data-k="ctrl"><span data-i18n="mark.ctrl"></span><b id="cCtrl">0</b></button>
     </div>
-    <div class="offroute" id="dOff" hidden>ออกนอกเส้นทาง <span id="dOffM"></span></div>
+    <div class="ctl">
+      <button id="rStart" class="primary" data-i18n="rec.start"></button>
+      <button id="rFinish" data-i18n="rec.finish"></button>
+      <button id="rDiscard" class="danger-btn" data-i18n="rec.discard"></button>
+    </div>
+    <p class="note" id="rNote" data-i18n="rec.note"></p>
+  </section>
 
+  <!-- Navigator dashboard -->
+  <section id="dash" class="dash">
+    <div class="trip">
+      <div class="trip-cell"><span class="lbl" data-i18n="nav.total"></span><span class="big" id="dTotal">--.--</span></div>
+      <button class="trip-cell partial" id="partialCell"><span class="lbl" data-i18n="nav.partial"></span><span class="mid" id="dPartial">-.--</span></button>
+    </div>
+    <div class="status"><span id="dGps"></span><span id="dSpeed">-- km/h</span><span id="dRec"></span></div>
+    <div class="offroute" id="dOff" hidden><span data-i18n="nav.offroute"></span> <span id="dOffM"></span></div>
     <div class="rb-box next" id="dNext">
       <div class="rb-km"><span class="to" id="dNextIn">--</span><span class="at" id="dNextKm"></span></div>
       <div class="rb-tulip" id="dNextTulip"></div>
-      <div class="rb-text" id="dNextText">ยังไม่มีจุดถัดไป</div>
+      <div class="rb-text" id="dNextText"></div>
     </div>
     <div class="rb-box then" id="dThen">
       <div class="rb-km"><span class="at" id="dThenKm"></span></div>
       <div class="rb-tulip" id="dThenTulip"></div>
       <div class="rb-text" id="dThenText"></div>
     </div>
-
     <div class="tsd" id="dTsd" hidden>
       <div><span class="lbl">TSD</span><span class="tsd-d" id="dTsdDelta">--</span></div>
       <div class="tsd-side"><span id="dTsdSpeed">--</span><span id="dTsdElapsed">--</span></div>
     </div>
-
     <div class="ctl">
-      <button id="bGps" class="primary">เริ่ม GPS</button>
-      <button id="bSync">Sync จุด</button>
+      <button id="bGps" class="primary"></button>
+      <button id="bSync" data-i18n="nav.sync"></button>
       <button id="bMinus">−10 m</button>
       <button id="bPlus">+10 m</button>
-      <button id="bTsd">เริ่ม TSD</button>
-      <button id="bMore">เพิ่มเติม</button>
+      <button id="bTsd"></button>
+      <button id="bMore" data-i18n="nav.more"></button>
     </div>
   </section>
 
   <section id="mapWrap">
     <div id="map"></div>
     <div class="fabs">
-      <button class="fab" id="fLayer" title="สลับแผนที่/ดาวเทียม">ดาวเทียม</button>
-      <button class="fab org-only" id="fAdd" aria-pressed="false">+ จุด</button>
-      <button class="fab org-only" id="fFit">ทั้ง stage</button>
-      <button class="fab nav-only" id="fFollow" aria-pressed="true">ตามรถ</button>
-      <button class="fab org-only" id="fLocate">ตำแหน่งฉัน</button>
+      <button class="fab" id="fLayer"></button>
+      <button class="fab org-only" id="fAdd" aria-pressed="false" data-i18n="fab.add"></button>
+      <button class="fab org-only" id="fDraw" data-i18n="fab.draw"></button>
+      <button class="fab org-only" id="fFilter" aria-pressed="false" data-i18n="fab.ctrlOnly"></button>
+      <button class="fab org-only" id="fFit" data-i18n="fab.fit"></button>
+      <button class="fab nav-only rec-only" id="fFollow" aria-pressed="true" data-i18n="fab.follow"></button>
+      <button class="fab org-only" id="fLocate" data-i18n="fab.locate"></button>
     </div>
-    <div class="hint" id="addHint" hidden>แตะบนเส้นทางเพื่อวางจุด</div>
+    <div class="hint" id="addHint" hidden data-i18n="hint.add"></div>
+    <div class="drawbar" id="drawBar" hidden>
+      <div class="drawinfo"><b id="drawKm">0.00 km</b><span id="drawMsg" data-i18n="draw.hint"></span></div>
+      <div class="drawbtns">
+        <div class="seg" role="group">
+          <button id="dSnap" aria-pressed="true" data-i18n="draw.snap"></button>
+          <button id="dLine" aria-pressed="false" data-i18n="draw.line"></button>
+        </div>
+        <button id="dUndo" data-i18n="draw.undo"></button>
+        <button id="dCancel" data-i18n="common.cancel"></button>
+        <button id="dDone" class="primary" data-i18n="draw.done"></button>
+      </div>
+    </div>
   </section>
 
   <!-- Organizer panel -->
@@ -86,30 +110,35 @@
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="rb" aria-selected="true">Roadbook</button>
       <button role="tab" data-tab="stage" aria-selected="false">Stage</button>
-      <button role="tab" data-tab="file" aria-selected="false">ไฟล์</button>
+      <button role="tab" data-tab="file" aria-selected="false" data-i18n="tab.file"></button>
     </div>
     <div class="tabpane" id="tab-rb"></div>
     <div class="tabpane" id="tab-stage" hidden></div>
     <div class="tabpane" id="tab-file" hidden>
       <div class="group">
-        <h3>นำเข้า</h3>
-        <label class="btn">นำเข้า GPX<input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
-        <label class="btn">เปิดไฟล์โปรเจกต์ (.json)<input type="file" id="inJson" accept=".json,application/json" hidden></label>
-        <p class="note">GPX แต่ละ track จะกลายเป็น 1 stage และ waypoint ที่อยู่ห่างเส้นทางไม่เกิน 40 m จะถูกดึงเข้ามาเป็นจุดให้อัตโนมัติ</p>
+        <h3 data-i18n="file.lang"></h3>
+        <div class="seg wide" id="langSeg"></div>
       </div>
       <div class="group">
-        <h3>ส่งออก</h3>
-        <button id="bSaveJson">บันทึกโปรเจกต์ (.json)</button>
-        <button id="bCsv">Roadbook เป็น CSV (เปิดใน Excel)</button>
-        <button id="bGpxOut">เส้นทาง + จุด เป็น GPX</button>
-        <button id="bLogOut">เส้นทางที่วิ่งจริง เป็น GPX</button>
+        <h3 data-i18n="file.import"></h3>
+        <label class="btn"><span data-i18n="file.importGpx"></span><input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
+        <label class="btn"><span data-i18n="file.openJson"></span><input type="file" id="inJson" accept=".json,application/json" hidden></label>
+        <p class="note" data-i18n="file.importNote"></p>
       </div>
       <div class="group">
-        <h3>โปรเจกต์</h3>
-        <label class="field">ชื่อโปรเจกต์<input id="projName"></label>
-        <button id="bNewProj" class="danger-btn">เริ่มโปรเจกต์ใหม่</button>
-        <button id="bInstall" hidden class="primary">ติดตั้งแอปลงเครื่อง</button>
+        <h3 data-i18n="file.export"></h3>
+        <button id="bSaveJson" data-i18n="file.saveJson"></button>
+        <button id="bCsv" data-i18n="file.csv"></button>
+        <button id="bGpxOut" data-i18n="file.gpx"></button>
+        <button id="bLogOut" data-i18n="file.log"></button>
+      </div>
+      <div class="group">
+        <h3 data-i18n="file.project"></h3>
+        <label class="field"><span data-i18n="file.projName"></span><input id="projName"></label>
+        <button id="bNewProj" class="danger-btn" data-i18n="file.newProj"></button>
+        <button id="bInstall" hidden class="primary" data-i18n="file.install"></button>
         <p class="note" id="storeNote"></p>
+        <p class="note">Rally Roadbook v1.1</p>
       </div>
     </div>
   </section>
@@ -129,8 +158,12 @@
       </div>
     </div>
     <div class="types" id="ptTypes"></div>
+    <div class="ctrl-fields" id="ptCtrl" hidden>
+      <label class="field"><span data-i18n="pt.code"></span><input id="ptCode" autocapitalize="characters" placeholder="TC1"></label>
+      <label class="field"><span data-i18n="pt.time"></span><input id="ptTime" type="time"></label>
+    </div>
     <div class="danger-lv" id="ptDanger" hidden>
-      ระดับอันตราย
+      <span data-i18n="pt.dangerLv"></span>
       <button type="button" data-lv="1">!</button>
       <button type="button" data-lv="2">!!</button>
       <button type="button" data-lv="3">!!!</button>
@@ -139,20 +172,20 @@
       <div class="tulip-preview" id="ptPreview"></div>
       <div class="tulip-ctl">
         <div class="presets" id="ptPresets"></div>
-        <label class="field slim">มุม <output id="ptAngleOut">0°</output>
+        <label class="field slim"><span><span data-i18n="pt.angle"></span> <output id="ptAngleOut">0°</output></span>
           <input type="range" id="ptAngle" min="-180" max="180" step="5">
         </label>
-        <div class="branches"><span>ทางแยกอื่น</span><span id="ptBranches"></span></div>
+        <div class="branches"><span data-i18n="pt.branches"></span><span id="ptBranches"></span></div>
       </div>
     </div>
-    <label class="field">คำสั่ง (ไทย)<input id="ptTh"></label>
-    <label class="field">Instruction (EN)<input id="ptEn"></label>
-    <label class="field">หมายเหตุ<input id="ptNote" placeholder="เช่น ทางลูกรัง, สะพานแคบ"></label>
+    <label class="field"><span data-i18n="pt.th"></span><input id="ptTh"></label>
+    <label class="field"><span data-i18n="pt.en"></span><input id="ptEn"></label>
+    <label class="field"><span data-i18n="pt.note"></span><input id="ptNote" data-i18n-ph="pt.notePh"></label>
     <div class="dlg-foot">
-      <button type="button" id="ptDel" class="danger-btn">ลบจุด</button>
+      <button type="button" id="ptDel" class="danger-btn"></button>
       <span class="spacer"></span>
-      <button value="cancel">ยกเลิก</button>
-      <button type="button" id="ptSave" class="primary">บันทึก</button>
+      <button value="cancel" data-i18n="common.cancel"></button>
+      <button type="button" id="ptSave" class="primary" data-i18n="common.save"></button>
     </div>
   </form>
 </dialog>
@@ -160,20 +193,20 @@
 <!-- Navigator extra -->
 <dialog id="moreDlg">
   <form method="dialog" class="dlg">
-    <h3>ตั้งค่าระหว่างวิ่ง</h3>
-    <label class="check"><input type="checkbox" id="oMap" checked> แสดงแผนที่</label>
-    <label class="check"><input type="checkbox" id="oSound" checked> เสียงเตือนก่อนถึงจุด</label>
-    <label class="check"><input type="checkbox" id="oVib" checked> สั่นเตือน</label>
-    <label class="check"><input type="checkbox" id="oNight"> จอกลางคืน</label>
-    <label class="check"><input type="checkbox" id="oRec" checked> บันทึกเส้นทางที่วิ่ง</label>
+    <h3 data-i18n="more.title"></h3>
+    <label class="check"><input type="checkbox" id="oMap" checked> <span data-i18n="more.map"></span></label>
+    <label class="check"><input type="checkbox" id="oSound" checked> <span data-i18n="more.sound"></span></label>
+    <label class="check"><input type="checkbox" id="oVib" checked> <span data-i18n="more.vib"></span></label>
+    <label class="check"><input type="checkbox" id="oNight"> <span data-i18n="more.night"></span></label>
+    <label class="check"><input type="checkbox" id="oRec" checked> <span data-i18n="more.rec"></span></label>
     <div class="row2">
-      <button type="button" id="oTsdReset">รีเซ็ต TSD</button>
-      <button type="button" id="oOffReset">ล้างค่า Sync</button>
-      <button type="button" id="oLog">ส่งออกเส้นที่วิ่ง</button>
-      <button type="button" id="oLogClear">ล้างเส้นที่วิ่ง</button>
+      <button type="button" id="oTsdReset" data-i18n="more.tsdReset"></button>
+      <button type="button" id="oOffReset" data-i18n="more.offReset"></button>
+      <button type="button" id="oLog" data-i18n="more.log"></button>
+      <button type="button" id="oLogClear" data-i18n="more.logClear"></button>
     </div>
-    <p class="note">เตือนที่ 300 / 100 / 50 m ก่อนถึงจุด ค่า GPS ที่คลาดเกิน 50 m จะไม่ถูกใช้คำนวณระยะ</p>
-    <div class="dlg-foot"><span class="spacer"></span><button value="ok" class="primary">ปิด</button></div>
+    <p class="note" data-i18n="more.note"></p>
+    <div class="dlg-foot"><span class="spacer"></span><button value="ok" class="primary" data-i18n="common.close"></button></div>
   </form>
 </dialog>
 
@@ -181,6 +214,7 @@
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="core.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

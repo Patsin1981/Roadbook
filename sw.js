@@ -1,6 +1,6 @@
 /* Rally Roadbook service worker */
-var VER = 'rb-v1.0.1';
-var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'manifest.webmanifest',
+var VER = 'rb-v1.1.0';
+var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'i18n.js', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png',
   'fonts/barlow-condensed-latin-500-normal.woff2', 'fonts/barlow-condensed-latin-700-normal.woff2', 'fonts/barlow-condensed-latin-800-normal.woff2',

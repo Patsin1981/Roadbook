@@ -23,18 +23,18 @@ button:focus-visible,select:focus-visible,input:focus-visible,.btn:focus-within{
 /* Header */
 .bar{display:flex;gap:8px;align-items:center;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top));border-bottom:2px solid var(--rule);background:var(--paper)}
 .mode{display:flex;border:2px solid var(--ink);border-radius:3px;overflow:hidden;flex:none}
-.mode button{border:0;border-radius:0;min-height:40px;font-weight:600}
+.mode button{border:0;border-radius:0;min-height:40px;font-weight:600;padding:0 10px}
 .mode button[aria-selected=true]{background:var(--ink);color:var(--paper)}
 #stageSel{flex:1;min-width:0;min-height:44px;border:1.5px solid var(--ink);background:var(--paper);border-radius:3px;padding:0 8px;font-family:var(--f);font-weight:700;font-size:20px}
 
 /* Layout */
 main{display:grid;min-height:0;overflow:hidden}
 body.mode-org main{grid-template-rows:55% 45%;grid-template-areas:"map" "panel"}
-body.mode-nav main{grid-template-rows:auto 1fr;grid-template-areas:"dash" "map"}
+body.mode-nav main,body.mode-rec main{grid-template-rows:auto 1fr;grid-template-areas:"dash" "map"}
 body.mode-nav.nomap main{grid-template-rows:1fr}
-body.mode-org #dash,body.mode-nav #panel,body.mode-nav.nomap #mapWrap{display:none}
-body.mode-org .nav-only,body.mode-nav .org-only{display:none}
-#dash{grid-area:dash;overflow:auto}
+body.mode-org #dash,body.mode-org #rec,body.mode-nav #panel,body.mode-nav #rec,body.mode-rec #panel,body.mode-rec #dash,body.mode-nav.nomap #mapWrap{display:none}
+body.mode-org .nav-only,body.mode-org .rec-only,body.mode-rec .org-only,body.mode-nav .org-only{display:none}
+.dash{grid-area:dash;overflow:auto}
 #mapWrap{grid-area:map;position:relative;min-height:0;border-bottom:2px solid var(--rule)}
 #map{position:absolute;inset:0;background:#DDD}
 #panel{grid-area:panel;display:flex;flex-direction:column;min-height:0}
@@ -78,6 +78,7 @@ body.mode-org .nav-only,body.mode-nav .org-only{display:none}
 .tag.DANGER{color:var(--red)}
 .rb-row.sel .tag.DANGER{color:var(--red)}
 .empty{padding:20px 14px;display:flex;flex-direction:column;gap:10px;color:var(--mute);line-height:1.5}
+.empty b,.empty button,.empty .btn{color:var(--ink)}
 
 /* Stage panel */
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:15px}
@@ -123,7 +124,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .spacer{flex:1}
 
 /* Navigator dashboard */
-#dash{display:flex;flex-direction:column;gap:6px;padding:8px}
+.dash{display:flex;flex-direction:column;gap:6px;padding:8px}
 .trip{display:grid;grid-template-columns:1.6fr 1fr;border:2px solid var(--rule)}
 .trip-cell{display:flex;flex-direction:column;padding:4px 10px;border:0;border-radius:0;min-height:auto;text-align:left;align-items:flex-start;background:transparent}
 .trip-cell.partial{border-left:2px solid var(--rule)}
@@ -157,9 +158,48 @@ body.mode-nav.nomap #dash .rb-box{min-height:120px}
 
 #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:2000;background:#000;color:#fff;padding:10px 16px;border-radius:3px;max-width:92vw;font-weight:600;border:1.5px solid #fff}
 .leaflet-container{font-family:var(--t)}
+/* Control labels on map */
+.ctl-icon{background:none;border:0}
+.ctl-tag{position:absolute;left:-2px;bottom:6px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;white-space:nowrap;background:#FFE14D;color:#000;border:2px solid #000;border-radius:2px;padding:1px 7px 2px;font-family:var(--f);line-height:1.05;box-shadow:0 2px 0 #000}
+.ctl-tag::after{content:"";position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);border:7px solid transparent;border-top-color:#000;border-bottom:0}
+.ctl-tag b{font-weight:800;font-size:18px}
+.ctl-tag span{font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
+.ctl-tag.START,.ctl-tag.FINISH{background:#000;color:#fff}
+.ctl-tag.START::after,.ctl-tag.FINISH::after{border-top-color:#000}
+.ctl-tag.PC,.ctl-tag.CP{background:#fff}
+.ctl-tag.sel{outline:3px solid #0050B3}
+.rb-row.ctrl .tag{background:var(--mark);color:#000;border-color:#000}
+.rb-row.ctrl .tag.START,.rb-row.ctrl .tag.FINISH{background:#000;color:#fff}
+.ctrl-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ctrl-fields input{font-family:var(--f);font-weight:700;font-size:20px}
+
+/* Draw route */
+.drawbar{position:absolute;left:0;right:0;bottom:0;z-index:600;background:var(--paper);border-top:2px solid var(--rule);padding:8px;display:flex;flex-direction:column;gap:6px}
+.drawinfo{display:flex;gap:10px;align-items:baseline;font-size:14px;color:var(--mute)}
+.drawinfo b{font-family:var(--f);font-size:22px;color:var(--ink)}
+.drawbtns{display:flex;gap:6px;flex-wrap:wrap}
+.drawbtns>button{flex:1;padding:0 8px}
+.seg{display:flex;border:1.5px solid var(--ink);border-radius:3px;overflow:hidden}
+.seg button{border:0;border-radius:0;padding:0 10px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.seg.wide button{flex:1}
+.wp{width:26px;height:26px;border-radius:50%;background:#fff;color:#000;border:2.5px solid #0050B3;font:700 13px/21px var(--f);text-align:center}
+.wp.first{background:#000;color:#fff;border-color:#000}
+
+/* Recce */
+.marks{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mark{min-height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-weight:700;font-size:17px;border-width:2px}
+.mark b{font-family:var(--f);font-size:26px;line-height:1}
+.mark.danger{color:var(--red);border-color:var(--red)}
+.mark.ctrl{background:var(--mark);color:#000}
+.mark:disabled{opacity:.4}
+button:disabled{opacity:.45;cursor:default}
+.rec-on{color:var(--red)}
+.rec-on::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px}
+
 @media (prefers-reduced-motion:reduce){.rb-box.next.flash{animation:none;outline:4px solid var(--red)}}
 @media (min-width:900px){
   body.mode-org main{grid-template-rows:1fr;grid-template-columns:1fr 440px;grid-template-areas:"map panel"}
   body.mode-org #mapWrap{border-bottom:0;border-right:2px solid var(--rule)}
-  body.mode-nav main{grid-template-rows:1fr;grid-template-columns:480px 1fr;grid-template-areas:"dash map"}
+  body.mode-nav main,body.mode-rec main{grid-template-rows:1fr;grid-template-columns:480px 1fr;grid-template-areas:"dash map"}
 }
