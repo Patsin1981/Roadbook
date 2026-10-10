@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.3.0';
+  var APP_VER = '1.4.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
@@ -19,7 +19,8 @@
   var DEF = {
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
-    clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true
+    clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
+    paper: 'A5', coordFmt: 'ddm'
   };
   var CFG = (function () {
     var raw = null, c = {};
@@ -344,6 +345,7 @@
     el.innerHTML =
       '<div class="group"><label class="field">' + t('stage.name') + '<input id="sName" value="' + RB.esc(st.name) + '"></label>' +
       '<div class="colors">' + COLORS.map(function (c) { return '<button style="background:' + c + '" data-color="' + c + '" aria-pressed="' + (st.color === c) + '" aria-label="' + c + '"></button>'; }).join('') + '</div>' +
+      '<div class="row2"><label class="field">Section<input id="sSection" value="' + RB.esc(st.section || '') + '"></label><label class="field">Leg<input id="sLeg" value="' + RB.esc(st.leg || '') + '"></label></div>' +
       '<div class="kv"><span>' + t('stage.lenGps') + '</span><b>' + (L0 / 1000).toFixed(3) + ' km</b><span>' + t('stage.lenAdj') + '</span><b>' + (L0 * f / 1000).toFixed(3) + ' km</b><span>' + t('stage.nPoints') + '</span><b>' + st.points.length + '</b></div></div>' +
 
       '<div class="group"><h3>' + t('stage.calTitle') + '</h3>' +
@@ -367,6 +369,8 @@
       '<div class="group"><button id="sDel" class="danger-btn">' + t('stage.delete') + '</button></div>';
 
     $('sName').onchange = function () { st.name = this.value.trim() || st.name; save(); renderStageSel(); };
+    $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
+    $('sLeg').onchange = function () { st.leg = this.value.trim(); save(); };
     el.querySelectorAll('[data-color]').forEach(function (b) { b.onclick = function () { st.color = b.dataset.color; save(); drawTracks(); renderStagePanel(); }; });
     $('sFac').onchange = function () {
       var v = parseFloat(this.value); if (!(v > 0.8 && v < 1.2)) { toast(t('err.factorRange')); this.value = f.toFixed(4); return; }
@@ -684,6 +688,44 @@
     var body = P.stages.map(function (st, i) { var c = RB.stageCSV(st); return i ? c.split('\r\n').slice(1).join('\r\n') : c; }).join('\r\n');
     download(safeName(P.name) + '_roadbook.csv', '﻿' + body, 'text/csv;charset=utf-8');
   };
+  // ---------- Excel export (event SS Form layout) ----------
+  var scriptCache = {};
+  function loadScript(src) {
+    if (!scriptCache[src]) scriptCache[src] = new Promise(function (ok, bad) {
+      var el = document.createElement('script'); el.src = src; el.onload = ok; el.onerror = function () { delete scriptCache[src]; bad(new Error(src)); };
+      document.head.appendChild(el);
+    });
+    return scriptCache[src];
+  }
+  function tulipPng(p) {
+    return new Promise(function (resolve) {
+      var size = 300, svg = RB.tulipSVG(p.angle, p.branches, { size: size, ink: '#000', stroke: 6 });
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas'); c.width = c.height = size;
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, size, size); g.drawImage(img, 0, 0, size, size);
+        resolve(c.toDataURL('image/png').split(',')[1]);
+      };
+      img.onerror = function () { resolve('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII='); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+  }
+  function exportXlsx() {
+    if (!P.stages.length) return toast(t('err.noStage'));
+    var btn = $('bXlsx'); btn.disabled = true; toast(t('xl.building'), 8000);
+    loadScript('vendor/exceljs/exceljs.min.js').then(function () {
+      var stages = P.stages.map(function (st) { return Object.assign({}, st, { _len: lenOf(st) }); });
+      return RBX.build(window.ExcelJS, { project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl });
+    }).then(function (buf) {
+      var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = safeName(P.name) + '_roadbook_' + day + '.xlsx'; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      toast(t('xl.done', { n: P.stages.length }), 3500);
+    }).catch(function (e) { toast(t('xl.fail') + (e && e.message ? ' (' + e.message + ')' : ''), 6000); })
+      .then(function () { btn.disabled = false; });
+  }
+  $('bXlsx').onclick = exportXlsx;
   $('bGpxOut').onclick = function () { if (!P.stages.length) return toast(t('err.noStage')); download(safeName(P.name) + '.gpx', RB.stageGPX(P.stages), 'application/gpx+xml'); };
   $('bLogOut').onclick = exportLog;
   $('projName').onchange = function () { P.name = this.value.trim() || P.name; save(); };
@@ -1106,6 +1148,11 @@
         rowH(t('set.layer'), segH('layer', [['osm', t('fab.map')], ['sat', t('fab.sat')]])) +
         rowH(t('set.drawMode'), segH('drawSnap', [[true, t('draw.snap')], [false, t('draw.line')]])) +
         '<div class="set-row"><span class="set-lbl" id="sTiles">' + t('set.tilesCounting') + '</span><button type="button" id="sTilesClear">' + t('set.tilesClear') + '</button></div>') +
+
+      grpH(t('set.docs'),
+        rowH(t('set.paper'), segH('paper', [['A5', 'A5'], ['A4', 'A4']])) +
+        rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])),
+        t('set.docsNote')) +
 
       grpH(t('set.data'),
         chkH('backup', t('set.backupRemind')) +

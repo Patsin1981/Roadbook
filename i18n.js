@@ -130,6 +130,10 @@ var I18N = {
     'fin.title': 'จบการบันทึก recce', 'fin.back': 'บันทึกต่อ', 'fin.create': 'สร้าง stage',
     'fin.marks': 'มาร์คไว้: เลี้ยว/แยก {a} · อันตราย {b} · จุดควบคุม {c}',
     'set.tilesClearTitle': 'ล้างแผนที่ offline?', 'set.updateReady': 'มีเวอร์ชันใหม่ ปิดหน้านี้แล้วแตะข้อความด้านล่างเพื่อโหลด',
+    'file.xlsx': 'Roadbook เป็น Excel (ฟอร์ม SS)', 'xl.building': 'กำลังสร้างไฟล์ Excel…', 'xl.done': 'สร้างไฟล์ Excel แล้ว ({n} stage)',
+    'xl.fail': 'สร้างไฟล์ Excel ไม่สำเร็จ', 'xl.noPoints': 'ยังไม่มีจุดใน stage นี้',
+    'set.docs': 'เอกสาร Roadbook', 'set.paper': 'ขนาดกระดาษ', 'set.coordFmt': 'รูปแบบพิกัด',
+    'set.docsNote': 'ใช้กับไฟล์ Excel ที่ส่งออก ทศนิยมระยะใช้ค่าเดียวกับ "ทศนิยมระยะบนจอนำทาง" พิมพ์หน้าละ 5 จุดเหมือนฟอร์มเดิม',
     'toast.tsdReset': 'รีเซ็ต TSD แล้ว', 'toast.offReset': 'ล้างค่า Sync แล้ว', 'toast.update': 'มีเวอร์ชันใหม่ แตะที่นี่เพื่อโหลด'
   },
 
@@ -263,6 +267,10 @@ var I18N = {
     'fin.title': 'Finish recce recording', 'fin.back': 'Keep recording', 'fin.create': 'Create stage',
     'fin.marks': 'Marked: turns {a} · danger {b} · controls {c}',
     'set.tilesClearTitle': 'Clear offline map?', 'set.updateReady': 'A new version is ready. Close this screen and tap the message at the bottom to load it',
+    'file.xlsx': 'Roadbook as Excel (SS form)', 'xl.building': 'Building the Excel file…', 'xl.done': 'Excel file created ({n} stages)',
+    'xl.fail': 'Could not create the Excel file', 'xl.noPoints': 'No points in this stage yet',
+    'set.docs': 'Roadbook documents', 'set.paper': 'Paper size', 'set.coordFmt': 'Coordinate format',
+    'set.docsNote': 'Used for the exported Excel file. Distance decimals follow "Decimals on the driving screen". Prints 5 boxes per page like the original form',
     'toast.tsdReset': 'TSD reset', 'toast.offReset': 'Sync cleared', 'toast.update': 'A new version is ready. Tap to load it'
   }
 };
