@@ -918,16 +918,21 @@
 
   // ---------- Service worker ----------
   if ('serviceWorker' in navigator && /^https?:/.test(location.protocol)) {
+    var offerUpdate = function (w) {
+      if (!w || !navigator.serviceWorker.controller) return;
+      toast(t('toast.update'), 600000);
+      $('toast').onclick = function () { w.postMessage('skip'); };
+    };
     navigator.serviceWorker.register('sw.js').then(function (reg) {
+      // a version downloaded while the app was closed waits here; offer it on every open
+      if (reg.waiting) offerUpdate(reg.waiting);
       reg.addEventListener('updatefound', function () {
         var nw = reg.installing;
-        nw && nw.addEventListener('statechange', function () {
-          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            toast(t('toast.update'), 10000);
-            $('toast').onclick = function () { nw.postMessage('skip'); };
-          }
-        });
+        nw && nw.addEventListener('statechange', function () { if (nw.state === 'installed') offerUpdate(nw); });
       });
+      var check = function () { reg.update().catch(function () {}); };
+      check();
+      document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') check(); });
     }).catch(function () {});
     var reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function () { if (!reloaded) { reloaded = true; location.reload(); } });
