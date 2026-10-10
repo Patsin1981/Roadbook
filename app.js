@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.2.1';
+  var APP_VER = '1.3.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
@@ -88,10 +88,35 @@
       el.addEventListener(ev, function () { clearTimeout(timer); el.classList.remove('holding'); });
     });
   }
+  function topDialog() { var d = document.querySelectorAll('dialog[open]'); return d.length ? d[d.length - 1] : null; }
   function toast(msg, ms) {
-    var el = $('toast'); el.textContent = msg; el.hidden = false; el.onclick = null;
+    var el = $('toast'), host = topDialog() || document.body;
+    if (el.parentNode !== host) host.appendChild(el); // an open dialog sits above the page, so the message must live inside it
+    el.textContent = msg; el.hidden = false; el.onclick = null;
     clearTimeout(toast._t); toast._t = setTimeout(function () { el.hidden = true; }, ms || 2600);
   }
+  // In-app replacement for confirm()/prompt(): resolves true / the typed text, or null when cancelled
+  var askState = null;
+  function ask(o) {
+    if (askState) { askState.resolve(null); askState = null; }
+    $('askTitle').textContent = o.title || '';
+    $('askBody').textContent = o.body || ''; $('askBody').hidden = !o.body;
+    $('askField').hidden = o.input == null;
+    if (o.input != null) { $('askLbl').textContent = o.label || ''; $('askIn').value = o.input; }
+    $('askOk').textContent = o.ok || t('common.ok'); $('askNo').textContent = o.cancel || t('common.cancel');
+    $('askOk').className = o.danger ? 'danger-fill' : 'primary';
+    return new Promise(function (resolve) {
+      askState = { resolve: resolve, input: o.input != null };
+      $('askDlg').showModal();
+      if (o.input != null) setTimeout(function () { $('askIn').focus(); $('askIn').select(); }, 50);
+    });
+  }
+  function askDone(v) { var st = askState; askState = null; if ($('askDlg').open) $('askDlg').close(); if (st) st.resolve(v); }
+  $('askOk').onclick = function () { askDone(askState && askState.input ? $('askIn').value : true); };
+  $('askNo').onclick = function () { askDone(null); };
+  $('askIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); $('askOk').click(); } };
+  $('askDlg').addEventListener('cancel', function (e) { e.preventDefault(); askDone(null); });
+
   function typeName(type) { return type === 'TULIP' ? 'Tulip' : type === 'DANGER' ? t('type.danger') : type === 'INFO' ? 'Info' : type; }
   function fmtClock(s) { s = Math.max(0, Math.floor(s)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' : '') + (m < 10 && h ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x; }
 
@@ -214,23 +239,40 @@
 
   // ---------- Header / modes ----------
   function renderStageSel() {
-    var sel = $('stageSel'); sel.innerHTML = '';
-    if (!P.stages.length) { sel.innerHTML = '<option>' + RB.esc(t('stage.none')) + '</option>'; sel.disabled = true; return; }
-    sel.disabled = false;
+    var sel = $('stageSel'); sel.innerHTML = ''; sel.disabled = false;
+    if (!P.stages.length) sel.innerHTML = '<option value="" disabled>' + RB.esc(t('stage.none')) + '</option>';
     P.stages.forEach(function (st) {
       var o = document.createElement('option'); o.value = st.id;
       o.textContent = st.name + '  ' + (lenOf(st) * fac(st) / 1000).toFixed(2) + ' km'; sel.appendChild(o);
     });
-    sel.value = S.stageId;
+    var imp = document.createElement('option'); imp.value = '__import'; imp.textContent = t('stage.import'); sel.appendChild(imp);
+    sel.value = S.stageId || '';
   }
-  $('stageSel').onchange = function () { selectStage(this.value, true); };
+  $('stageSel').onchange = function () {
+    if (this.value === '__import') { this.value = S.stageId || ''; $('inAny').click(); return; }
+    selectStage(this.value, true);
+  };
+  // one picker for both kinds of file: route files (.gpx) and backup files (.json)
+  $('inAny').onchange = function () {
+    var list = Array.prototype.slice.call(this.files || []); this.value = '';
+    var backups = list.filter(function (f) { return /\.json$/i.test(f.name); }), gpx = list.filter(function (f) { return !/\.json$/i.test(f.name); });
+    if (gpx.length) importGpxFiles(gpx);
+    if (backups.length) {
+      var fr = new FileReader();
+      fr.onload = function () { try { openProjectText(fr.result, backups[0].name); } catch (e) { toast(t('err.notProject')); } };
+      fr.readAsText(backups[0]);
+    }
+  };
   function selectStage(id, fit) {
     S.stageId = id; S.sel = null; S.suggest = [];
     navResetMatch(); renderAll(); if (fit) fitStage();
   }
   document.querySelectorAll('.mode button').forEach(function (b) { b.onclick = function () { setMode(b.dataset.mode); }; });
   function setMode(m) {
-    if (S.draw && m !== 'org') drawCancel();
+    if (S.draw && m !== 'org') {
+      if (S.draw.wps.length > 1) { drawCancel(function () { setMode(m); }); return; }
+      drawEnd();
+    }
     S.mode = m; setAdd(false);
     ['org', 'rec', 'nav'].forEach(function (x) { document.body.classList.toggle('mode-' + x, x === m); });
     document.querySelectorAll('.mode button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.mode === m); });
@@ -344,17 +386,21 @@
     $('sClear').onclick = function () { S.suggest = []; drawSuggest(); };
     $('sAddAll').onclick = function () {
       if (!S.suggest.length) return toast(t('err.detFirst'));
-      if (!confirm(t('confirm.addAll', { n: S.suggest.length }))) return;
-      S.suggest.forEach(function (s) { st.points.push(newPointAt(st, s.d, s.angle, 'TULIP')); });
-      S.suggest = []; save(); renderAll(); toast(t('toast.addedCheck'), 4000);
+      ask({ title: t('confirm.addAll', { n: S.suggest.length }), ok: t('common.add') }).then(function (ok) {
+        if (!ok) return;
+        S.suggest.forEach(function (s) { st.points.push(newPointAt(st, s.d, s.angle, 'TULIP')); });
+        S.suggest = []; save(); renderAll(); toast(t('toast.addedCheck'), 4000);
+      });
     };
     $('tApply').onclick = function () {
       var a = parseFloat($('tFrom').value) * 1000 / f, b = parseFloat($('tTo').value) * 1000 / f;
       if (!(isFinite(a) && isFinite(b) && b - a > 20)) return toast(t('err.trimRange'));
       var drop = st.points.filter(function (p) { return p.d < a - 0.5 || p.d > b + 0.5; }).length;
-      if (!confirm(t('confirm.trim', { a: (a * f / 1000).toFixed(2), b: (b * f / 1000).toFixed(2), n: drop }))) return;
-      var r = RB.trimStage(st, a, b); st.track = r.track; st.points = r.points;
-      S.suggest = []; navResetMatch(); save(); renderAll(); fitStage(); toast(t('toast.trimmed'));
+      ask({ title: t('confirm.trimTitle'), body: t('confirm.trim', { a: (a * f / 1000).toFixed(3), b: (b * f / 1000).toFixed(3), n: drop }), ok: t('stage.trimApply'), danger: drop > 0 }).then(function (ok) {
+        if (!ok) return;
+        var r = RB.trimStage(st, a, b); st.track = r.track; st.points = r.points;
+        S.suggest = []; navResetMatch(); save(); renderAll(); fitStage(); toast(t('toast.trimmed'));
+      });
     };
     el.querySelectorAll('[data-tsd]').forEach(function (inp) {
       inp.onchange = function () { var v = parseFloat(inp.value); if (isFinite(v)) { st.tsd[+inp.dataset.tsd][inp.dataset.k] = v; save(); } };
@@ -365,8 +411,10 @@
       st.tsd.push({ fromKm: last ? +(last.fromKm + 1).toFixed(2) : 0, kmh: last ? last.kmh : 40 }); save(); renderStagePanel();
     };
     $('sDel').onclick = function () {
-      if (!confirm(t('confirm.delStage', { name: st.name }))) return;
-      P.stages = P.stages.filter(function (x) { return x !== st; }); S.stageId = P.stages[0] ? P.stages[0].id : null; save(); renderAll(); fitStage();
+      ask({ title: t('confirm.delStageTitle', { name: st.name }), body: t('confirm.delStage', { n: st.points.length }), ok: t('common.delete'), danger: true }).then(function (ok) {
+        if (!ok) return;
+        P.stages = P.stages.filter(function (x) { return x !== st; }); S.stageId = P.stages[0] ? P.stages[0].id : null; save(); renderAll(); fitStage();
+      });
     };
   }
 
@@ -420,8 +468,10 @@
       S.sel = D.id; save(); $('ptDlg').close(); renderAll();
     };
     $('ptDel').onclick = function () {
-      var st = stage(); if (!Dnew && !confirm(t('confirm.delPoint'))) return;
-      st.points = st.points.filter(function (p) { return p.id !== D.id; }); S.sel = null; save(); $('ptDlg').close(); renderAll();
+      var st = stage(), id = D.id;
+      var go = function () { st.points = st.points.filter(function (p) { return p.id !== id; }); S.sel = null; save(); if ($('ptDlg').open) $('ptDlg').close(); renderAll(); };
+      if (Dnew) return go();
+      ask({ title: t('confirm.delPoint'), ok: t('common.delete'), danger: true }).then(function (ok) { if (ok) go(); });
     };
     $('ptDlg').addEventListener('close', function () { if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; } D = null; });
   })();
@@ -467,12 +517,13 @@
     $('drawBar').hidden = true; $('fDraw').hidden = false; $('fAdd').hidden = false; $('fFilter').hidden = false;
     map.getContainer().style.cursor = ''; drawPins();
   }
-  function drawCancel() {
-    if (S.draw && S.draw.wps.length > 1 && !confirm(t('confirm.drawCancel'))) return false;
-    drawEnd(); return true;
+  function drawCancel(then) {
+    var fin = function () { drawEnd(); if (typeof then === 'function') then(); };
+    if (!S.draw || S.draw.wps.length < 2) return fin();
+    ask({ title: t('confirm.drawCancel'), ok: t('confirm.drawDiscard'), cancel: t('confirm.drawKeep'), danger: true }).then(function (ok) { if (ok) fin(); });
   }
   $('fDraw').onclick = drawStart;
-  $('dCancel').onclick = drawCancel;
+  $('dCancel').onclick = function () { drawCancel(); };
   $('dSnap').onclick = function () { if (S.draw) { S.draw.snap = true; drawRender(); } };
   $('dLine').onclick = function () { if (S.draw) { S.draw.snap = false; drawRender(); } };
   $('dUndo').onclick = function () { var d = S.draw; if (!d || !d.wps.length) return; d.wps.pop(); d.segs.pop(); drawRender(); };
@@ -481,9 +532,12 @@
     if (d.segs.some(function (s) { return s.busy; })) return toast(t('draw.wait'));
     var track = drawTrack();
     if (track.length < 2) return toast(t('err.drawShort'));
-    var name = prompt(t('prompt.stageName'), nextStageName()); if (name === null) return;
-    var st = addStage(name.trim() || nextStageName(), RB.cleanTrack(track, 1));
-    drawEnd(); selectStage(st.id, true); toast(t('toast.stageCreated', { name: st.name, km: (lenOf(st) / 1000).toFixed(2) }), 3500);
+    var len = 0; for (var k = 1; k < track.length; k++) len += RB.hav(track[k - 1], track[k]);
+    ask({ title: t('draw.saveTitle'), body: t('draw.saveBody', { km: (len / 1000).toFixed(3), n: d.wps.length }), input: nextStageName(), label: t('prompt.stageName'), ok: t('fin.create') }).then(function (name) {
+      if (name == null || !S.draw) return;
+      var st = addStage(name.trim() || nextStageName(), RB.cleanTrack(track, 1));
+      drawEnd(); selectStage(st.id, true); toast(t('toast.stageCreated', { name: st.name, km: (lenOf(st) / 1000).toFixed(3) }), 3500);
+    });
   };
   function drawTrack() {
     var d = S.draw, out = [];
@@ -608,18 +662,23 @@
     var fr = new FileReader();
     fr.onload = function () {
       try {
-        var o = JSON.parse(fr.result); if (!o || !Array.isArray(o.stages)) throw 0;
-        if (P.stages.length && !confirm(t('confirm.replace', { name: o.name || f.name }))) return;
-        P = o; S.stageId = P.stages[0] ? P.stages[0].id : null; save(); renderAll(); fitStage(); toast(t('toast.opened', { name: P.name || f.name }));
+        openProjectText(fr.result, f.name);
       } catch (e) { toast(t('err.notProject')); }
     };
     fr.readAsText(f);
   };
   function backupJson() {
-    download(safeName(P.name) + '.json', JSON.stringify(P), 'application/json');
+    var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    download(safeName(P.name) + '_' + day + '.json', JSON.stringify(P), 'application/json');
     META.dirtySince = null; META.backupAt = Date.now(); saveMeta();
   }
   $('bSaveJson').onclick = backupJson;
+  function openProjectText(text, fname) {
+    var o = JSON.parse(text); if (!o || !Array.isArray(o.stages)) throw 0;
+    var apply = function () { P = o; S.stageId = P.stages[0] ? P.stages[0].id : null; save(); META.dirtySince = null; saveMeta(); renderAll(); fitStage(); toast(t('toast.opened', { name: P.name || fname })); };
+    if (!P.stages.length) return apply();
+    ask({ title: t('confirm.replaceTitle'), body: t('confirm.replace', { name: o.name || fname, cur: P.name, n: P.stages.length }), ok: t('confirm.replaceOk'), danger: true }).then(function (ok) { if (ok) apply(); });
+  }
   $('bCsv').onclick = function () {
     if (!P.stages.length) return toast(t('err.noStage'));
     var body = P.stages.map(function (st, i) { var c = RB.stageCSV(st); return i ? c.split('\r\n').slice(1).join('\r\n') : c; }).join('\r\n');
@@ -629,8 +688,10 @@
   $('bLogOut').onclick = exportLog;
   $('projName').onchange = function () { P.name = this.value.trim() || P.name; save(); };
   $('bNewProj').onclick = function () {
-    if (!confirm(t('confirm.newProj'))) return;
-    P = newProject(); S.stageId = null; save(); renderAll();
+    ask({ title: t('file.newProj'), body: t('confirm.newProj', { name: P.name, n: P.stages.length }), ok: t('confirm.newProjOk'), danger: true }).then(function (ok) {
+      if (!ok) return;
+      P = newProject(); S.stageId = null; save(); renderAll();
+    });
   };
   var deferredInstall = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); deferredInstall = e; $('bInstall').hidden = false; });
@@ -750,13 +811,25 @@
       saveRec(true); renderRec(); toast(t('rec.marked', { k: t('mark.' + m.k), km: fmtKm(m.km, 2) }), 1500);
     };
   });
+  // Finish screen: recording keeps running until "Create stage" is pressed, so "Keep recording" loses nothing
   $('rFinish').onclick = function () {
     if (R.pts.length < 2) return toast(t('rec.tooShort'));
+    var c = { turn: 0, danger: 0, ctrl: 0 }; R.marks.forEach(function (m) { c[m.k]++; });
+    $('finDist').textContent = fmtKm(R.dist / 1000);
+    $('finTime').textContent = fmtClock(recElapsed());
+    $('finMarks').textContent = t('fin.marks', { a: c.turn, b: c.danger, c: c.ctrl });
+    $('finName').value = nextStageName();
+    $('finDlg').showModal();
+  };
+  $('finBack').onclick = function () { $('finDlg').close(); };
+  $('finName').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); $('finOk').click(); } };
+  $('finOk').onclick = function () {
     if (R.on) recPause();
-    var name = prompt(t('prompt.stageName'), nextStageName()); if (name === null) return;
+    var name = $('finName').value.trim() || nextStageName();
     var tr = RB.cleanTrack(R.pts.map(function (p) { return [p[0], p[1]]; }), 2);
-    if (tr.length < 2) return toast(t('rec.tooShort'));
-    var st = addStage(name.trim() || nextStageName(), tr), cum = cumOf(st);
+    if (tr.length < 2) { $('finDlg').close(); return toast(t('rec.tooShort')); }
+    $('finDlg').close();
+    var st = addStage(name, tr), cum = cumOf(st);
     R.marks.forEach(function (m) {
       var r = RB.project(tr, cum, m.lat, m.lon), d = r.d;
       var type = m.k === 'danger' ? 'DANGER' : m.k === 'ctrl' ? 'TC' : 'TULIP';
@@ -776,15 +849,17 @@
     R = loadRec(); R.pts = []; R.marks = []; R.startT = null; R.elapsed = 0; R.dist = 0;
     try { store.removeItem(RKEY); } catch (e) {}
     save(); setMode('org'); selectStage(st.id, true);
-    toast(t('toast.recDone', { name: st.name, km: (lenOf(st) / 1000).toFixed(2), n: n }), 4500);
+    toast(t('toast.recDone', { name: st.name, km: (lenOf(st) / 1000).toFixed(3), n: n }), 4500);
   };
   $('rDiscard').onclick = function () {
     if (!R.pts.length && !R.marks.length) return;
-    if (!confirm(t('confirm.recDiscard'))) return;
-    if (R.on) recPause();
-    R.pts = []; R.marks = []; R.startT = null; R.elapsed = 0; R.dist = 0;
-    try { store.removeItem(RKEY); } catch (e) {}
-    recDrawAll(); renderRec();
+    ask({ title: t('confirm.recDiscardTitle'), body: t('confirm.recDiscard', { km: fmtKm(R.dist / 1000), n: R.marks.length }), ok: t('rec.discard'), danger: true }).then(function (ok) {
+      if (!ok) return;
+      if (R.on) recPause();
+      R.pts = []; R.marks = []; R.startT = null; R.elapsed = 0; R.dist = 0;
+      try { store.removeItem(RKEY); } catch (e) {}
+      recDrawAll(); renderRec();
+    });
   };
   function renderRec() {
     $('rStart').textContent = R.on ? t('rec.pause') : R.startT ? t('rec.resume') : t('rec.start');
@@ -977,7 +1052,11 @@
   act($('oTsdReset'), function () { delete N.tsdStart[S.stageId]; saveNav(); renderNav(); toast(t('toast.tsdReset')); }, true);
   act($('oOffReset'), function () { delete N.offset[S.stageId]; saveNav(); renderNav(); toast(t('toast.offReset')); }, true);
   $('oLog').onclick = exportLog;
-  $('oLogClear').onclick = function () { if (confirm(t('confirm.logClear'))) { N.log = []; saveNav(); gNav.clearLayers(); gpsMarker = accCircle = null; navDrawStatic(); renderNav(); } };
+  $('oLogClear').onclick = function () {
+    ask({ title: t('confirm.logClear'), body: t('confirm.logClearBody', { n: N.log.length }), ok: t('more.logClear'), danger: true }).then(function (ok) {
+      if (ok) { N.log = []; saveNav(); gNav.clearLayers(); gpsMarker = accCircle = null; navDrawStatic(); renderNav(); }
+    });
+  };
   function exportLog() {
     if (!N.log.length) return toast(t('err.noLog'));
     var st = stage(), nm = (st ? st.name : 'run') + '_' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '');
@@ -1036,7 +1115,7 @@
 
       grpH(t('set.about'),
         '<div class="kv"><span>' + t('set.version') + '</span><b>' + APP_VER + '</b></div>' +
-        '<button type="button" id="sUpdate">' + t('set.checkUpdate') + '</button>');
+        '<button type="button" id="sUpdate">' + t('set.checkUpdate') + '</button><p class="note" id="sUpdMsg" role="status"></p>');
 
     var body = $('setBody');
     body.querySelectorAll('[data-seg]').forEach(function (g) {
@@ -1077,8 +1156,9 @@
     $('sBackup').onclick = function () { backupJson(); renderSettings(); };
     $('sTilesClear').onclick = function () {
       if (!window.caches) return;
-      if (!confirm(t('set.tilesConfirm'))) return;
-      caches.delete('rb-tiles').then(function () { renderSettings(); toast(t('set.tilesCleared')); });
+      ask({ title: t('set.tilesClearTitle'), body: t('set.tilesConfirm'), ok: t('set.tilesClear'), danger: true }).then(function (ok) {
+        if (ok) caches.delete('rb-tiles').then(function () { renderSettings(); toast(t('set.tilesCleared')); });
+      });
     };
     $('sUpdate').onclick = checkForUpdate;
     if (window.caches) caches.open('rb-tiles').then(function (c) { return c.keys(); }).then(function (k) { if ($('sTiles')) $('sTiles').textContent = t('set.tiles', { n: k.length }); }).catch(function () {});
@@ -1098,21 +1178,26 @@
   function openSettings() { renderSettings(); $('setDlg').showModal(); }
   $('bSet').onclick = openSettings;
   $('setReset').onclick = function () {
-    if (!confirm(t('set.resetConfirm'))) return;
-    var keep = { lang: CFG.lang, clockOffset: CFG.clockOffset };
-    CFG = Object.assign({}, DEF, keep); saveCfg();
-    setLayer(false); if (N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
-    applyNight(); renderAll(); renderSettings(); toast(t('set.resetDone'));
+    ask({ title: t('set.reset'), body: t('set.resetConfirm'), ok: t('set.reset') }).then(function (ok) {
+      if (!ok) return;
+      var keep = { lang: CFG.lang, clockOffset: CFG.clockOffset };
+      CFG = Object.assign({}, DEF, keep); saveCfg();
+      setLayer(false); if (N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
+      applyNight(); renderAll(); renderSettings(); toast(t('set.resetDone'));
+    });
   };
+  function updMsg(msg) { var el = $('sUpdMsg'); if (el) el.textContent = msg; }
   function checkForUpdate() {
-    if (!swReg) return toast(t('set.noUpdate'));
-    toast(t('set.checking'), 3000);
+    if (!swReg) return updMsg(t('set.noUpdate'));
+    updMsg(t('set.checking'));
     swReg.update().then(function () {
       setTimeout(function () {
-        if (swReg.waiting) offerUpdate(swReg.waiting);
-        else if (!swReg.installing) toast(t('set.upToDate', { v: APP_VER }));
+        if (swReg.waiting || swReg.installing) {
+          updMsg(t('set.updateReady'));
+          if (swReg.waiting) offerUpdate(swReg.waiting);
+        } else updMsg(t('set.upToDate', { v: APP_VER }));
       }, 1500);
-    }).catch(function () { toast(t('set.updateFail')); });
+    }).catch(function () { updMsg(t('set.updateFail')); });
   }
 
   // ---------- Render all ----------

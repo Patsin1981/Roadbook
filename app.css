@@ -201,6 +201,19 @@ button:disabled{opacity:.45;cursor:default}
 .rec-on{color:var(--red)}
 .rec-on::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:1px}
 
+/* In-app dialogs */
+.danger-fill{background:var(--red);border-color:var(--red);color:#fff}
+#askDlg,#finDlg{width:min(460px,92vw)}
+.dlg.ask h3,.dlg.fin h3{margin:0;font-size:19px;line-height:1.35}
+.dlg.ask p{margin:0;line-height:1.5}
+.dlg.ask .dlg-foot button,.dlg.fin .dlg-foot button{min-height:52px;padding:0 18px;font-weight:600}
+.fin-stats{display:grid;grid-template-columns:1fr 1fr;border:2px solid var(--rule)}
+.fin-stats>div{display:flex;flex-direction:column;padding:4px 10px}
+.fin-stats>div+div{border-left:2px solid var(--rule)}
+.fin-stats b{font-family:var(--f);font-weight:800;font-size:34px;font-variant-numeric:tabular-nums;line-height:1.1}
+.fin-marks{margin:0;font-size:15px}
+dialog #toast{position:fixed}
+
 /* Header gear */
 @media (max-width:400px){.bar{gap:6px;padding-left:8px;padding-right:8px}.mode button{padding:0 7px;font-size:15px}#stageSel{font-size:17px;padding:0 4px}.gear{width:40px}}
 .gear{flex:none;width:44px;padding:0;display:flex;align-items:center;justify-content:center}

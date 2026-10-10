@@ -211,6 +211,31 @@
   </form>
 </dialog>
 
+<!-- In-app question / confirmation (replaces the browser's own boxes) -->
+<dialog id="askDlg">
+  <form method="dialog" class="dlg ask">
+    <h3 id="askTitle"></h3>
+    <p id="askBody"></p>
+    <label class="field" id="askField" hidden><span id="askLbl"></span><input id="askIn" autocomplete="off"></label>
+    <div class="dlg-foot"><button type="button" id="askNo"></button><span class="spacer"></span><button type="button" id="askOk" class="primary"></button></div>
+  </form>
+</dialog>
+
+<!-- Finish recce -->
+<dialog id="finDlg">
+  <form method="dialog" class="dlg fin">
+    <h3 data-i18n="fin.title"></h3>
+    <div class="fin-stats">
+      <div><span class="lbl" data-i18n="rec.dist"></span><b id="finDist">0.000</b></div>
+      <div><span class="lbl" data-i18n="rec.time"></span><b id="finTime">0:00</b></div>
+    </div>
+    <p class="fin-marks" id="finMarks"></p>
+    <label class="field"><span data-i18n="prompt.stageName"></span><input id="finName" autocomplete="off"></label>
+    <div class="dlg-foot"><button type="button" id="finBack" data-i18n="fin.back"></button><span class="spacer"></span><button type="button" id="finOk" class="primary" data-i18n="fin.create"></button></div>
+  </form>
+</dialog>
+
+<input type="file" id="inAny" accept=".gpx,.json,application/gpx+xml,application/json,application/xml,text/xml" multiple hidden>
 <div id="toast" role="status" hidden></div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
