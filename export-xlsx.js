@@ -7,7 +7,8 @@
   var THIN = { style: 'thin', color: { argb: 'FF000000' } };
   var BOX = { top: THIN, left: THIN, bottom: THIN, right: THIN };
   var ROWS_PER_PAGE = 5;      // matches the printed form and the WRC roadbook
-  var DATA_ROW_H = 120;       // points, same as the form
+  var DATA_ROW_H = 155;       // points: 5 boxes fill an A5 / A4 page (header rows 2-7 repeat on every page)
+  var ROW_PX = DATA_ROW_H * 4 / 3;
   var FIRST = 8;              // first data row
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -195,6 +196,7 @@
         ['J4', 'Section\nNo.', { size: 10 }], ['K4', st.section || '', { size: 16, bold: true }]
       ];
       hv.forEach(function (x) { var c = ws.getCell(x[0]); if (x[1] != null && x[1] !== '') c.value = x[1]; cellStyle(c, x[2]); });
+      ['K2', 'K4'].forEach(function (k) { var c = ws.getCell(k); c.alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true }; }); // e.g. "SECTION 1" stays on one line
       // leg distance = Total of the last box, so it follows any Partial edited in Excel
       if (ps.length) {
         var lastKm = (ps[ps.length - 1].d - 0) * f / 1000;
@@ -239,12 +241,8 @@
         var dir = ws.getCell(r, 5);
         dir.border = BOX;
         if (isSS) {
-          // WRC special-stage pages: tinted direction box with the distance still to the SS finish in its corner
+          // WRC special-stage pages: tinted direction box (distance to the finish is already in Distance regress)
           dir.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCEFFA' } };
-          dir.value = r === last ? 0 : { formula: 'K' + r, result: +((ps[ps.length - 1].d - p.d) * f / 1000).toFixed(3) };
-          dir.numFmt = fmt;
-          dir.font = { name: FONT, size: 13, bold: true };
-          dir.alignment = { horizontal: 'right', vertical: 'bottom' };
         }
         if (isSS && (i % ROWS_PER_PAGE === 0)) {
           // "SS" band on the page edge so the stage is found quickly when flipping the book
@@ -281,14 +279,14 @@
             var hh = 46, ww = im.w * hh / im.h, boxW = 2.4 * 7 + 16.3 * 7 + 9.2 * 7 + 9 * 7 + 11 * 7;
             if (ww > boxW - 12) { hh = hh * (boxW - 12) / ww; ww = boxW - 12; }
             var id = wb.addImage({ base64: im.b64, extension: 'png' });
-            ws.addImage(id, { tl: { col: 6.04, row: r - 1 + (160 - hh - 8) / 160 }, ext: { width: ww, height: hh }, editAs: 'oneCell' });
+            ws.addImage(id, { tl: { nativeCol: 5, nativeColOff: 4 * 9525, nativeRow: r - 1, nativeRowOff: Math.round((ROW_PX - hh - 8) * 9525) }, ext: { width: ww, height: hh }, editAs: 'oneCell' });
           }));
         }
         jobs.push(ctx.tulipPng(p).then(function (b64) {
           var id = wb.addImage({ base64: b64, extension: 'png' });
           // E column ≈ 155 px wide, 120 pt row = 160 px high
-          var sz = isSS ? 128 : 145; // leave the bottom-right corner free for the distance-to-finish on SS pages
-          ws.addImage(id, { tl: { col: 4.05, row: r - 1 + 0.04 }, ext: { width: sz, height: sz }, editAs: 'oneCell' });
+          var sz = 148; // E column is about 155 px wide; centre the tulip in the taller box
+          ws.addImage(id, { tl: { nativeCol: 4, nativeColOff: 4 * 9525, nativeRow: r - 1, nativeRowOff: Math.round((ROW_PX - sz) / 2 * 9525) }, ext: { width: sz, height: sz }, editAs: 'oneCell' });
         }));
       });
       if (!ps.length) { ws.getCell('F8').value = t('xl.noPoints'); }
