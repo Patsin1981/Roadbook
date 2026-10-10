@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.4.1';
+  var APP_VER = '1.4.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
@@ -302,13 +302,17 @@
     var txt = RB.isControl(p) ? (p.code || p.type) + (p.time ? '  ' + p.time : '') : typeName(p.type);
     return '<span class="tag ' + p.type + '">' + RB.esc(txt) + '</span>';
   }
+  function symsHTML(p, size) {
+    var a = (p.sym || []).filter(function (id) { return RBS.BY[id]; });
+    return a.length ? '<span class="syms-inline">' + a.map(function (id) { return RBS.svg(id, size); }).join('') + '</span>' : '';
+  }
   function instr(p) { var a = LANG === 'th' ? [p.th, p.en] : [p.en, p.th]; return { main: a[0] || a[1] || '', sub: a[0] ? a[1] : '' }; }
   function rowHTML(p, i, prevKm, f) {
     var km = p.d * f / 1000, ins = instr(p);
     return '<div class="rb-row' + (p.type === 'DANGER' ? ' danger' : '') + (RB.isControl(p) ? ' ctrl' : '') + (S.sel === p.id ? ' sel' : '') + '" data-id="' + p.id + '">' +
       '<div><span class="rb-no">#' + (i + 1) + '</span><span class="rb-tot">' + fmtKm(km) + '</span><span class="rb-par">' + fmtKm(km - prevKm) + '</span></div>' +
-      '<div class="rb-tulip">' + RB.tulipSVG(p.angle, p.branches, { size: 56 }) + '</div>' +
-      '<div class="rb-text">' + tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (ins.sub ? '<span class="en">' + RB.esc(ins.sub) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + '</div></div>';
+      '<div class="rb-tulip">' + RB.tulipOf(p, { size: 56 }) + '</div>' +
+      '<div class="rb-text">' + tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (ins.sub ? '<span class="en">' + RB.esc(ins.sub) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + symsHTML(p, 26) + '</div></div>';
   }
   function renderRB() {
     var el = $('tab-rb'), st = stage();
@@ -431,6 +435,12 @@
     $('ptPresets').innerHTML = RB.PRESETS.map(function (p) { return '<button type="button" data-a="' + p.a + '" title="' + (LANG === 'th' ? p.th : p.en) + '">' + RB.tulipSVG(p.a, [], { size: 40, stroke: 7 }) + '</button>'; }).join('') +
       '<button type="button" data-a="none" title="' + t('pt.noArrow') + '">' + RB.tulipSVG(null, [], { size: 40, stroke: 7 }) + '</button>';
     $('ptBranches').innerHTML = BRANCH_SET.map(function (a) { return '<button type="button" data-b="' + a + '" aria-label="' + a + '°">' + RB.tulipSVG(null, [a], { size: 28, stroke: 7 }) + '</button>'; }).join('');
+    var groups = [['ctrl', t('sym.gCtrl')], ['road', t('sym.gRoad')], ['mark', t('sym.gMark')]];
+    $('ptSyms').innerHTML = groups.map(function (g) {
+      return '<h4>' + g[1] + '</h4><div class="symgrid">' + RBS.LIST.filter(function (x) { return x.g === g[0]; }).map(function (x) {
+        return '<button type="button" data-sym="' + x.id + '" aria-pressed="false">' + RBS.svg(x.id, 32) + '<span>' + RB.esc(LANG === 'th' ? x.th : x.en) + '</span></button>';
+      }).join('') + '</div>';
+    }).join('');
     if (D) syncDlg();
   }
   (function wireDlg() {
@@ -452,6 +462,14 @@
       syncDlg();
     };
     $('ptAngle').oninput = function () { D.angle = +this.value; syncDlg(true); };
+    $('ptRound').onclick = function () { D.round = !D.round; syncDlg(); };
+    $('ptRoad').onclick = function (e) { var b = e.target.closest('[data-road]'); if (b) { D.road = b.dataset.road; syncDlg(); } };
+    $('ptSyms').onclick = function (e) {
+      var b = e.target.closest('[data-sym]'); if (!b) return;
+      var a = D.sym = (D.sym || []).slice(), i = a.indexOf(b.dataset.sym);
+      if (i >= 0) a.splice(i, 1); else a.push(b.dataset.sym);
+      syncDlg();
+    };
     $('ptBranches').onclick = function (e) {
       var b = e.target.closest('[data-b]'); if (!b) return; var a = +b.dataset.b, i = D.branches.indexOf(a);
       if (i >= 0) D.branches.splice(i, 1); else D.branches.push(a); syncDlg();
@@ -486,6 +504,7 @@
     DautoCode = isNew && !!D.code;
     $('ptTh').value = D.th || ''; $('ptEn').value = D.en || ''; $('ptNote').value = D.note || '';
     $('ptDel').textContent = isNew ? t('pt.discard') : t('pt.delete');
+    $('ptSymWrap').open = !!(D.sym && D.sym.length);
     syncDlg(); showDraft(); $('ptDlg').showModal();
   }
   function showDraft() {
@@ -505,7 +524,12 @@
     document.querySelectorAll('#ptBranches [data-b]').forEach(function (b) { b.setAttribute('aria-pressed', D.branches.indexOf(+b.dataset.b) >= 0); });
     if (!fromSlider) $('ptAngle').value = D.angle == null ? 0 : D.angle;
     $('ptAngleOut').textContent = D.angle == null ? t('pt.none') : (D.angle > 0 ? '+' : '') + D.angle + '°';
-    $('ptPreview').innerHTML = RB.tulipSVG(D.angle, D.branches, { size: 110, ink: '#000' });
+    $('ptPreview').innerHTML = RB.tulipOf(D, { size: 110, ink: '#000' });
+    $('ptRound').setAttribute('aria-pressed', !!D.round);
+    document.querySelectorAll('#ptRoad [data-road]').forEach(function (b) { b.setAttribute('aria-pressed', (D.road || 'tarmac') === b.dataset.road); });
+    var sy = D.sym || [];
+    document.querySelectorAll('#ptSyms [data-sym]').forEach(function (b) { b.setAttribute('aria-pressed', sy.indexOf(b.dataset.sym) >= 0); });
+    $('ptSymCount').textContent = sy.length ? '(' + sy.length + ')' : '';
     $('ptTh').value = D.th || ''; $('ptEn').value = D.en || '';
   }
 
@@ -809,7 +833,7 @@
   }
   function tulipPng(p) {
     return new Promise(function (resolve) {
-      var size = 300, svg = RB.tulipSVG(p.angle, p.branches, { size: size, ink: '#000', stroke: 6 });
+      var size = 300, svg = RB.tulipOf(p, { size: size, ink: '#000', stroke: 6 });
       var img = new Image();
       img.onload = function () {
         var c = document.createElement('canvas'); c.width = c.height = size;
@@ -820,6 +844,20 @@
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     });
   }
+  function symbolsPng(p) {
+    var ids = (p.sym || []).filter(function (id) { return RBS.BY[id]; });
+    if (!ids.length) return Promise.resolve(null);
+    var S1 = 120, gap = 12, cv = document.createElement('canvas'); cv.width = ids.length * S1 + (ids.length - 1) * gap; cv.height = S1;
+    var g = cv.getContext('2d');
+    return Promise.all(ids.map(function (id, i) {
+      return new Promise(function (ok) {
+        var im = new Image();
+        im.onload = function () { g.drawImage(im, i * (S1 + gap), 0, S1, S1); ok(); };
+        im.onerror = ok;
+        im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(RBS.svg(id, S1));
+      });
+    })).then(function () { return { b64: cv.toDataURL('image/png').split(',')[1], w: cv.width, h: cv.height }; });
+  }
   function exportXlsx() {
     if (!P.stages.length) return toast(t('err.noStage'));
     var btn = $('bXlsx'); btn.disabled = true; toast(t('xl.building'), 8000);
@@ -829,7 +867,7 @@
       return Promise.all(e.logos.map(function (src) { return imgSize(src).then(function (sz) { return { b64: src.split(',')[1], w: sz.w, h: sz.h }; }); }))
         .then(function (logos) {
           return RBX.build(window.ExcelJS, {
-            project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl,
+            project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl, symbolsPng: symbolsPng,
             event: { title: e.title, date: e.date, place: e.place, logos: logos },
             overview: function (st) {
               var real = P.stages.filter(function (x) { return x.id === st.id; })[0];
@@ -1127,8 +1165,8 @@
     if (!p) { $(tulipId).innerHTML = ''; $(textId).innerHTML = inId ? t('nav.noNext') : ''; $(kmId).textContent = ''; if (inId) $(inId).textContent = '--'; return; }
     var idx = s.ps.indexOf(p) + 1, ink = isNight() && !inId ? '#fff' : '#000', ins = instr(p);
     $(kmId).textContent = '#' + idx + '  ' + fmtKm(p.d * s.f / 1000);
-    $(tulipId).innerHTML = RB.tulipSVG(p.angle, p.branches, { size: inId ? 84 : 52, ink: ink });
-    $(textId).innerHTML = tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '');
+    $(tulipId).innerHTML = RB.tulipOf(p, { size: inId ? 84 : 52, ink: ink });
+    $(textId).innerHTML = tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + symsHTML(p, inId ? 34 : 24);
     if (inId) {
       var dist = s.x == null ? null : (p.d - s.x) * s.f;
       $(inId).textContent = dist == null ? '--' : dist >= 1000 ? (dist / 1000).toFixed(2) + 'k' : Math.max(0, Math.round(dist / 10) * 10) + ' m';

@@ -192,6 +192,17 @@
         info.value = lines.join('\n');
         cellStyle(info, { size: 16, bold: false, color: p.type === 'DANGER' ? 'FFD0021B' : undefined });
         boxRange(ws, r, 6, r, 10);
+        if (ctx.symbolsPng && p.sym && p.sym.length) {
+          info.alignment = { horizontal: 'center', vertical: 'top', wrapText: true };
+          jobs.push(ctx.symbolsPng(p).then(function (im) {
+            if (!im) return;
+            // symbols sit along the bottom of the information box, like the WRC book
+            var hh = 46, ww = im.w * hh / im.h, boxW = 2.4 * 7 + 16.3 * 7 + 9.2 * 7 + 9 * 7 + 11 * 7;
+            if (ww > boxW - 12) { hh = hh * (boxW - 12) / ww; ww = boxW - 12; }
+            var id = wb.addImage({ base64: im.b64, extension: 'png' });
+            ws.addImage(id, { tl: { col: 6.04, row: r - 1 + (160 - hh - 8) / 160 }, ext: { width: ww, height: hh }, editAs: 'oneCell' });
+          }));
+        }
         jobs.push(ctx.tulipPng(p).then(function (b64) {
           var id = wb.addImage({ base64: b64, extension: 'png' });
           // E column ≈ 155 px wide, 120 pt row = 160 px high

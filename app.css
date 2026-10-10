@@ -214,6 +214,19 @@ button:disabled{opacity:.45;cursor:default}
 .fin-marks{margin:0;font-size:15px}
 dialog #toast{position:fixed}
 
+/* Symbols, roundabout, road type */
+.road-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#ptRound[aria-pressed=true],#ptRoad button[aria-pressed=true]{background:var(--mark);color:#000;border-color:#000}
+#ptRoad button[aria-pressed=true]{border:0}
+.symwrap{border:1.5px solid var(--ink);border-radius:3px}
+.symwrap summary{min-height:44px;display:flex;align-items:center;gap:6px;padding:0 12px;font-weight:600;cursor:pointer}
+.symwrap h4{margin:10px 10px 4px;font-size:13px;color:var(--mute);font-weight:600}
+.symgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;padding:0 10px 10px}
+.symgrid button{min-height:64px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:1.15;background:#fff;color:#000}
+.symgrid button[aria-pressed=true]{background:var(--mark);border-width:2.5px}
+.syms-inline{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
+.syms-inline svg{flex:none}
+
 /* Event logos */
 .logos{display:flex;flex-wrap:wrap;gap:8px}
 .logo{display:flex;flex-direction:column;align-items:center;gap:4px;border:1.5px solid var(--ink);border-radius:3px;padding:6px;background:#fff}

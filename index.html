@@ -192,6 +192,17 @@
         <div class="branches"><span data-i18n="pt.branches"></span><span id="ptBranches"></span></div>
       </div>
     </div>
+    <div class="road-row">
+      <button type="button" id="ptRound" aria-pressed="false" data-i18n="pt.round"></button>
+      <div class="seg" role="group" id="ptRoad">
+        <button type="button" data-road="tarmac" data-i18n="pt.tarmac"></button>
+        <button type="button" data-road="gravel" data-i18n="pt.gravel"></button>
+      </div>
+    </div>
+    <details class="symwrap" id="ptSymWrap">
+      <summary><span data-i18n="pt.symbols"></span> <span id="ptSymCount"></span></summary>
+      <div id="ptSyms"></div>
+    </details>
     <label class="field"><span data-i18n="pt.th"></span><input id="ptTh"></label>
     <label class="field"><span data-i18n="pt.en"></span><input id="ptEn"></label>
     <label class="field"><span data-i18n="pt.note"></span><input id="ptNote" data-i18n-ph="pt.notePh"></label>
@@ -258,6 +269,7 @@
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="core.js"></script>
 <script src="i18n.js"></script>
+<script src="symbols.js"></script>
 <script src="overview.js"></script>
 <script src="export-xlsx.js"></script>
 <script src="app.js"></script>

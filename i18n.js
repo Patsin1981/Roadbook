@@ -142,6 +142,8 @@ var I18N = {
     'ov.png': 'ภาพ Overview (PNG)', 'ov.note': 'ภาพแผนที่เส้นทางพร้อมลูกศรทิศทางและป้ายจุดควบคุม ใช้พื้นแผนที่ตามที่เลือกอยู่บนจอ (แผนที่/ดาวเทียม) ต้องมีเน็ต',
     'ov.building': 'กำลังสร้างภาพ Overview…', 'ov.done': 'บันทึกภาพ Overview แล้ว', 'ov.fail': 'สร้างภาพ Overview ไม่สำเร็จ',
     'ov.partial': 'ภาพแผนที่บางส่วนโหลดไม่ได้ (ไม่มีเน็ต?) เส้นทางและป้ายยังครบ ลองใหม่ตอนมีเน็ต', 'xl.noOverview': 'สร้างภาพ Overview ไม่ได้',
+    'pt.round': 'วงเวียน', 'pt.tarmac': 'ลาดยาง', 'pt.gravel': 'ลูกรัง', 'pt.symbols': 'เครื่องหมาย',
+    'sym.gCtrl': 'จุดควบคุม / พื้นที่', 'sym.gRoad': 'ถนน / ป้าย', 'sym.gMark': 'สิ่งสังเกต',
     'toast.tsdReset': 'รีเซ็ต TSD แล้ว', 'toast.offReset': 'ล้างค่า Sync แล้ว', 'toast.update': 'มีเวอร์ชันใหม่ แตะที่นี่เพื่อโหลด'
   },
 
@@ -287,6 +289,8 @@ var I18N = {
     'ov.png': 'Overview picture (PNG)', 'ov.note': 'Route map with direction arrows and control labels, on the base map shown on screen (map/satellite). Needs internet',
     'ov.building': 'Building the overview picture…', 'ov.done': 'Overview picture saved', 'ov.fail': 'Could not create the overview picture',
     'ov.partial': 'Some map images could not load (offline?). Route and labels are complete; try again online', 'xl.noOverview': 'Overview picture unavailable',
+    'pt.round': 'Roundabout', 'pt.tarmac': 'Tarmac', 'pt.gravel': 'Gravel', 'pt.symbols': 'Symbols',
+    'sym.gCtrl': 'Controls / zones', 'sym.gRoad': 'Roads / signs', 'sym.gMark': 'Landmarks',
     'toast.tsdReset': 'TSD reset', 'toast.offReset': 'Sync cleared', 'toast.update': 'A new version is ready. Tap to load it'
   }
 };

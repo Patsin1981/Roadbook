@@ -180,28 +180,48 @@
   }
 
   // Tulip SVG. angle: 0 = straight, + = right, 180 = U-turn, null = no arrow (entry only)
+  // opts.round: roundabout (angle = exit direction); opts.gravel: dashed route line (unsealed road)
   function tulipSVG(angle, branches, opts) {
     opts = opts || {};
     var size = opts.size || 64, ink = opts.ink || '#000', w = opts.stroke || 6;
+    var dash = opts.gravel ? ' stroke-dasharray="' + (w * 1.6).toFixed(1) + ' ' + (w * 1.3).toFixed(1) + '"' : '';
+    var line = function (d) { return '<path d="' + d + '" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="' + (dash ? 'butt' : 'round') + '" stroke-linejoin="round"' + dash + '/>'; };
+    var head = function (ex, ey, ax, ay) {
+      var px = -ay, py = ax, h = 13, hw = 9, bx = ex - ax * h, by = ey - ay * h;
+      return { bx: bx, by: by, svg: '<path d="M' + ex.toFixed(1) + ',' + ey.toFixed(1) + ' L' + (bx + px * hw).toFixed(1) + ',' + (by + py * hw).toFixed(1) + ' L' + (bx - px * hw).toFixed(1) + ',' + (by - py * hw).toFixed(1) + ' Z" fill="' + ink + '"/>' };
+    };
     var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" width="' + size + '" height="' + size + '" aria-hidden="true">';
+    var R = opts.round ? 13 : 0;
     (branches || []).forEach(function (b) {
-      var x = Math.sin(b * D2R) * 34, y = -Math.cos(b * D2R) * 34;
-      s += '<line x1="0" y1="0" x2="' + x.toFixed(1) + '" y2="' + y.toFixed(1) + '" stroke="' + ink + '" stroke-width="' + (w * 0.45) + '" stroke-linecap="round"/>';
+      var sx = Math.sin(b * D2R), sy = -Math.cos(b * D2R);
+      s += '<line x1="' + (sx * R).toFixed(1) + '" y1="' + (sy * R).toFixed(1) + '" x2="' + (sx * 34).toFixed(1) + '" y2="' + (sy * 34).toFixed(1) + '" stroke="' + ink + '" stroke-width="' + (w * 0.45) + '" stroke-linecap="round"/>';
     });
     s += '<circle cx="0" cy="40" r="' + (w * 0.9) + '" fill="' + ink + '"/>';
-    if (angle == null) {
-      s += '<line x1="0" y1="40" x2="0" y2="0" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="round"/>';
+    if (opts.round) {
+      s += '<circle cx="0" cy="0" r="' + R + '" fill="none" stroke="' + ink + '" stroke-width="' + (w * 0.55) + '"/>';
+      var a = angle == null ? 0 : angle, ax = Math.sin(a * D2R), ay = -Math.cos(a * D2R);
+      var hd = head(ax * 40, ay * 40, ax, ay);
+      // entry to the ring, around it clockwise (left-hand traffic in Thailand = clockwise), out to the exit
+      var a0 = 180, a1 = ((a % 360) + 360) % 360; if (a1 <= a0) a1 += 360;
+      // draw the ring part in two halves so a full loop (U-turn at the roundabout) still shows
+      var am = (a0 + a1) / 2, mx = Math.sin(am * D2R) * R, my = -Math.cos(am * D2R) * R, ex = Math.sin(a1 * D2R) * R, ey = -Math.cos(a1 * D2R) * R;
+      s += line('M0,40 L0,' + R + ' A' + R + ',' + R + ' 0 0 1 ' + mx.toFixed(1) + ',' + my.toFixed(1) + ' A' + R + ',' + R + ' 0 0 1 ' + ex.toFixed(1) + ',' + ey.toFixed(1) + ' L' + hd.bx.toFixed(1) + ',' + hd.by.toFixed(1));
+      s += hd.svg;
+    } else if (angle == null) {
+      s += line('M0,40 L0,0');
     } else if (Math.abs(angle) >= 170) {
-      s += '<path d="M0,40 L0,-12 A13,13 0 0 0 -26,-12 L-26,22" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round"/>';
+      s += line('M0,40 L0,-12 A13,13 0 0 0 -26,-12 L-26,22');
       s += '<path d="M-36,16 L-26,34 L-16,16 Z" fill="' + ink + '"/>';
     } else {
-      var r = 38, ex = Math.sin(angle * D2R) * r, ey = -Math.cos(angle * D2R) * r;
-      var ax = Math.sin(angle * D2R), ay = -Math.cos(angle * D2R), px = -ay, py = ax, h = 13, hw = 9;
-      var bx = ex - ax * h, by = ey - ay * h;
-      s += '<polyline points="0,40 0,0 ' + bx.toFixed(1) + ',' + by.toFixed(1) + '" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="round" stroke-linejoin="round"/>';
-      s += '<path d="M' + ex.toFixed(1) + ',' + ey.toFixed(1) + ' L' + (bx + px * hw).toFixed(1) + ',' + (by + py * hw).toFixed(1) + ' L' + (bx - px * hw).toFixed(1) + ',' + (by - py * hw).toFixed(1) + ' Z" fill="' + ink + '"/>';
+      var ax2 = Math.sin(angle * D2R), ay2 = -Math.cos(angle * D2R), h2 = head(ax2 * 38, ay2 * 38, ax2, ay2);
+      s += line('M0,40 L0,0 L' + h2.bx.toFixed(1) + ',' + h2.by.toFixed(1));
+      s += h2.svg;
     }
     return s + '</svg>';
+  }
+  function tulipOf(p, opts) {
+    opts = Object.assign({}, opts || {}, { round: !!p.round, gravel: p.road === 'gravel' });
+    return tulipSVG(p.angle, p.branches, opts);
   }
 
   // ---------- TSD ----------
@@ -288,11 +308,11 @@
     return { track: out, points: pts };
   }
   function stageCSV(stage) {
-    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Code', 'Time', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Lat', 'Lon']];
+    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Code', 'Time', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Symbols', 'Road', 'Lat', 'Lon']];
     var prev = 0;
     sortedPoints(stage).forEach(function (p, i) {
       var km = p.d * f / 1000;
-      rows.push([stage.name, i + 1, km.toFixed(3), (km - prev).toFixed(3), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', p.lat.toFixed(6), p.lon.toFixed(6)]);
+      rows.push([stage.name, i + 1, km.toFixed(3), (km - prev).toFixed(3), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', (p.sym || []).join(' '), (p.round ? 'roundabout ' : '') + (p.road === 'gravel' ? 'gravel' : ''), p.lat.toFixed(6), p.lon.toFixed(6)]);
       prev = km;
     });
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
@@ -322,7 +342,7 @@
   var api = {
     hav: hav, bearing: bearing, normAngle: normAngle, cleanTrack: cleanTrack, buildCum: buildCum, idxAt: idxAt,
     pointAt: pointAt, project: project, angleAt: angleAt, detectTurns: detectTurns, parseGPX: parseGPX,
-    PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
+    PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES
   };
