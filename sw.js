@@ -1,10 +1,10 @@
 /* Rally Roadbook service worker */
-var VER = 'rb-v1.0.0';
+var VER = 'rb-v1.0.1';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png',
   'fonts/barlow-condensed-latin-500-normal.woff2', 'fonts/barlow-condensed-latin-700-normal.woff2', 'fonts/barlow-condensed-latin-800-normal.woff2',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 var TILES = 'rb-tiles', TILE_MAX = 6000;
 
 self.addEventListener('install', function (e) {
