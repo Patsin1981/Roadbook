@@ -51,8 +51,48 @@
     var fmt = cfg.navDec === 3 ? '0.000' : '0.00';
     var jobs = [];
 
+    var ev = ctx.event || { logos: [] };
     ctx.stages.forEach(function (st) {
       var f = st.factor > 0 ? st.factor : 1;
+      // ---- Overview sheet (same order as the event book: overview, then the stage roadbook) ----
+      if (ctx.overview) {
+        var ov = wb.addWorksheet(sheetName('Overview ' + st.name, used), {
+          pageSetup: {
+            paperSize: cfg.paper === 'A4' ? 9 : 11, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true,
+            margins: { left: 0.3, right: 0.3, top: 0.3, bottom: 0.3, header: 0.1, footer: 0.1 }
+          },
+          views: [{ showGridLines: false }]
+        });
+        ov.columns = [{ width: 2 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 2 }];
+        ov.getRow(1).height = 60; // logo strip
+        var tl = [['B2', ev.title, 15, true], ['B3', ev.date, 12, false], ['B4', ev.place, 12, false]];
+        tl.forEach(function (x) {
+          var r = +x[0].slice(1); ov.mergeCells('B' + r + ':H' + r); var c = ov.getCell(x[0]);
+          c.value = x[1] || ''; cellStyle(c, { size: x[2], bold: x[3], border: false });
+        });
+        ov.mergeCells('B6:H6');
+        var tc = ov.getCell('B6'); tc.value = 'Overview ' + st.name; cellStyle(tc, { size: 18, bold: true, border: false });
+        ov.mergeCells('B7:H7');
+        var sc = ov.getCell('B7');
+        sc.value = ((st._len || 0) * f / 1000).toFixed(cfg.navDec === 3 ? 3 : 2) + ' km' + (st.section ? '   Section ' + st.section : '');
+        cellStyle(sc, { size: 12, border: false });
+        // logos spread across the strip, keeping their proportions
+        var logos = ev.logos || [], stripW = 7 * 11 * 7.2, gapX = 12, hh = 64;
+        var widths = logos.map(function (l) { return hh * l.w / Math.max(1, l.h); }), totalW = widths.reduce(function (a, b) { return a + b; }, 0) + gapX * Math.max(0, logos.length - 1);
+        var k = totalW > stripW ? stripW / totalW : 1, x0 = (stripW - totalW * k) / 2;
+        logos.forEach(function (l, i) {
+          var id = wb.addImage({ base64: l.b64, extension: 'png' });
+          ov.addImage(id, { tl: { col: 1 + x0 / 79, row: 0.08 }, ext: { width: widths[i] * k, height: hh * k }, editAs: 'oneCell' });
+          x0 += (widths[i] + gapX) * k;
+        });
+        (function (ov, st) {
+          jobs.push(ctx.overview(st).then(function (img) {
+            if (!img) { ov.getCell('B9').value = t('xl.noOverview'); return; }
+            var id = wb.addImage({ base64: img.b64, extension: 'png' }), W = stripW, H = W * img.h / img.w;
+            ov.addImage(id, { tl: { col: 1, row: 8.2 }, ext: { width: W, height: H }, editAs: 'oneCell' });
+          }));
+        })(ov, st);
+      }
       var ps = st.points.slice().sort(function (a, b) { return a.d - b.d; });
       var ws = wb.addWorksheet(sheetName(st.name, used), {
         pageSetup: {
@@ -139,10 +179,13 @@
         // information: danger marks, control code + time, instruction, note, GPS at controls
         ws.mergeCells(r, 6, r, 10);
         var lines = [];
-        var head = (p.type === 'DANGER' ? '!'.repeat(p.danger || 1) + ' ' : '') + (p.code || (ctx.isControl(p) ? p.type : ''));
-        if (head.trim()) lines.push(head.trim() + (p.time ? '  ' + p.time : ''));
         var main = ctx.lang === 'en' ? (p.en || p.th) : (p.th || p.en);
-        if (main && main !== p.code) lines.push(main);
+        var code = p.code || (ctx.isControl(p) ? p.type : '');
+        // don't repeat the code when the instruction already says it (e.g. code START, text "START SS1")
+        if (code && main && main.toUpperCase().indexOf(code.toUpperCase()) >= 0) code = '';
+        var head = (p.type === 'DANGER' ? '!'.repeat(p.danger || 1) + ' ' : '') + code;
+        if (head.trim() || p.time) lines.push((head.trim() + (p.time ? '  ' + p.time : '')).trim());
+        if (main) lines.push(main);
         if (p.note) lines.push(p.note);
         if (ctx.isControl(p)) lines.push(coordText(p, cfg.coordFmt));
         var info = ws.getCell(r, 6);

@@ -134,6 +134,14 @@ var I18N = {
     'xl.fail': 'สร้างไฟล์ Excel ไม่สำเร็จ', 'xl.noPoints': 'ยังไม่มีจุดใน stage นี้',
     'set.docs': 'เอกสาร Roadbook', 'set.paper': 'ขนาดกระดาษ', 'set.coordFmt': 'รูปแบบพิกัด',
     'set.docsNote': 'ใช้กับไฟล์ Excel ที่ส่งออก ทศนิยมระยะใช้ค่าเดียวกับ "ทศนิยมระยะบนจอนำทาง" พิมพ์หน้าละ 5 จุดเหมือนฟอร์มเดิม',
+    'ev.title': 'ข้อมูลงาน', 'ev.name': 'ชื่องาน', 'ev.namePh': 'เช่น Classic car/RWD Rally 2026', 'ev.date': 'วันที่', 'ev.datePh': 'เช่น 12-13 Sep 2026',
+    'ev.place': 'สถานที่', 'ev.placePh': 'เช่น บึงบอระเพ็ด นครสวรรค์', 'ev.logos': 'โลโก้ (เรียงซ้ายไปขวา สูงสุด 5 รูป)', 'ev.addLogo': '+ เพิ่มโลโก้',
+    'ev.fromLib': 'เลือกจากคลังโลโก้', 'ev.noLogos': 'ยังไม่มีโลโก้', 'ev.libEmpty': 'คลังว่าง โลโก้ที่เคยเพิ่มจะเก็บไว้ที่นี่', 'ev.libRemove': 'ลบจากคลัง',
+    'ev.max': 'ใส่โลโก้ได้สูงสุด {n} รูป', 'ev.already': 'โลโก้นี้อยู่ในงานแล้ว', 'ev.badImage': 'เปิดรูปนี้ไม่ได้',
+    'ev.note': 'ใช้ในหน้า Overview ของไฟล์ Excel และภาพ Overview เปลี่ยนได้ตลอด โลโก้ที่เคยใช้เก็บในคลังของเครื่องนี้ เลือกใช้ซ้ำกับงานอื่นได้',
+    'ov.png': 'ภาพ Overview (PNG)', 'ov.note': 'ภาพแผนที่เส้นทางพร้อมลูกศรทิศทางและป้ายจุดควบคุม ใช้พื้นแผนที่ตามที่เลือกอยู่บนจอ (แผนที่/ดาวเทียม) ต้องมีเน็ต',
+    'ov.building': 'กำลังสร้างภาพ Overview…', 'ov.done': 'บันทึกภาพ Overview แล้ว', 'ov.fail': 'สร้างภาพ Overview ไม่สำเร็จ',
+    'ov.partial': 'ภาพแผนที่บางส่วนโหลดไม่ได้ (ไม่มีเน็ต?) เส้นทางและป้ายยังครบ ลองใหม่ตอนมีเน็ต', 'xl.noOverview': 'สร้างภาพ Overview ไม่ได้',
     'toast.tsdReset': 'รีเซ็ต TSD แล้ว', 'toast.offReset': 'ล้างค่า Sync แล้ว', 'toast.update': 'มีเวอร์ชันใหม่ แตะที่นี่เพื่อโหลด'
   },
 
@@ -271,6 +279,14 @@ var I18N = {
     'xl.fail': 'Could not create the Excel file', 'xl.noPoints': 'No points in this stage yet',
     'set.docs': 'Roadbook documents', 'set.paper': 'Paper size', 'set.coordFmt': 'Coordinate format',
     'set.docsNote': 'Used for the exported Excel file. Distance decimals follow "Decimals on the driving screen". Prints 5 boxes per page like the original form',
+    'ev.title': 'Event info', 'ev.name': 'Event name', 'ev.namePh': 'e.g. Classic car/RWD Rally 2026', 'ev.date': 'Date', 'ev.datePh': 'e.g. 12-13 Sep 2026',
+    'ev.place': 'Location', 'ev.placePh': 'e.g. Bueng Boraphet, Nakhon Sawan', 'ev.logos': 'Logos (left to right, up to 5)', 'ev.addLogo': '+ Add logo',
+    'ev.fromLib': 'Pick from logo library', 'ev.noLogos': 'No logos yet', 'ev.libEmpty': 'Library is empty. Logos you add are kept here', 'ev.libRemove': 'Remove',
+    'ev.max': 'Up to {n} logos', 'ev.already': 'This logo is already used', 'ev.badImage': 'Could not open this image',
+    'ev.note': 'Used on the Excel Overview pages and the overview picture. Change any time. Logos you have used stay in this device\'s library for other events',
+    'ov.png': 'Overview picture (PNG)', 'ov.note': 'Route map with direction arrows and control labels, on the base map shown on screen (map/satellite). Needs internet',
+    'ov.building': 'Building the overview picture…', 'ov.done': 'Overview picture saved', 'ov.fail': 'Could not create the overview picture',
+    'ov.partial': 'Some map images could not load (offline?). Route and labels are complete; try again online', 'xl.noOverview': 'Overview picture unavailable',
     'toast.tsdReset': 'TSD reset', 'toast.offReset': 'Sync cleared', 'toast.update': 'A new version is ready. Tap to load it'
   }
 };

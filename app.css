@@ -214,6 +214,16 @@ button:disabled{opacity:.45;cursor:default}
 .fin-marks{margin:0;font-size:15px}
 dialog #toast{position:fixed}
 
+/* Event logos */
+.logos{display:flex;flex-wrap:wrap;gap:8px}
+.logo{display:flex;flex-direction:column;align-items:center;gap:4px;border:1.5px solid var(--ink);border-radius:3px;padding:6px;background:#fff}
+.logo img{height:56px;max-width:120px;object-fit:contain}
+.logo .lbtns{display:flex;gap:4px}
+.logo .lbtns button{min-height:34px;min-width:34px;padding:0 6px;color:#000;background:#fff}
+.logolib{display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1.5px dashed var(--ink);border-radius:3px}
+.logolib .logo{cursor:pointer}
+.empty-note{color:var(--mute);font-size:14px}
+
 /* Header gear */
 @media (max-width:400px){.bar{gap:6px;padding-left:8px;padding-right:8px}.mode button{padding:0 7px;font-size:15px}#stageSel{font-size:17px;padding:0 4px}.gear{width:40px}}
 .gear{flex:none;width:44px;padding:0;display:flex;align-items:center;justify-content:center}

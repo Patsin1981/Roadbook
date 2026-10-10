@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.4.0';
+  var APP_VER = '1.4.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH'];
@@ -366,10 +366,12 @@
       '<table class="tsd-table"><thead><tr><th>' + t('stage.tsdFrom') + '</th><th>km/h</th><th></th></tr></thead><tbody>' + tsdRows + '</tbody></table>' +
       '<button id="tsdAdd">' + t('stage.tsdAdd') + '</button><p class="note">' + t('stage.tsdNote') + '</p></div>' +
 
+      '<div class="group"><h3>Overview</h3><button id="sOverview">' + t('ov.png') + '</button><p class="note">' + t('ov.note') + '</p></div>' +
       '<div class="group"><button id="sDel" class="danger-btn">' + t('stage.delete') + '</button></div>';
 
     $('sName').onchange = function () { st.name = this.value.trim() || st.name; save(); renderStageSel(); };
     $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
+    $('sOverview').onclick = exportOverviewPng;
     $('sLeg').onchange = function () { st.leg = this.value.trim(); save(); };
     el.querySelectorAll('[data-color]').forEach(function (b) { b.onclick = function () { st.color = b.dataset.color; save(); drawTracks(); renderStagePanel(); }; });
     $('sFac').onchange = function () {
@@ -688,6 +690,114 @@
     var body = P.stages.map(function (st, i) { var c = RB.stageCSV(st); return i ? c.split('\r\n').slice(1).join('\r\n') : c; }).join('\r\n');
     download(safeName(P.name) + '_roadbook.csv', '﻿' + body, 'text/csv;charset=utf-8');
   };
+  // ---------- Event info & logos (per project; logos also kept in a library on this device) ----------
+  var LOGO_KEY = 'rb.logos.v1', MAX_LOGOS = 5;
+  function ev() { P.event = P.event || { title: '', date: '', place: '', logos: [] }; P.event.logos = P.event.logos || []; return P.event; }
+  function logoLib() { try { return JSON.parse(store.getItem(LOGO_KEY) || '[]'); } catch (e) { return []; } }
+  function saveLogoLib(a) { try { store.setItem(LOGO_KEY, JSON.stringify(a.slice(0, 20))); return true; } catch (e) { toast(t('err.storageFull'), 5000); return false; } }
+  function shrinkImage(file) { // keep logos small: longest side 400 px, PNG keeps transparency
+    return new Promise(function (ok, bad) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          var k = Math.min(1, 400 / Math.max(im.width || 400, im.height || 400)), w = Math.max(1, Math.round((im.width || 400) * k)), h = Math.max(1, Math.round((im.height || 400) * k));
+          var c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(im, 0, 0, w, h);
+          ok(c.toDataURL('image/png'));
+        };
+        im.onerror = bad; im.src = fr.result;
+      };
+      fr.onerror = bad; fr.readAsDataURL(file);
+    });
+  }
+  function renderEvent() {
+    var e = ev();
+    $('evTitle').value = e.title || ''; $('evDate').value = e.date || ''; $('evPlace').value = e.place || '';
+    $('evLogos').innerHTML = e.logos.length ? e.logos.map(function (src, i) {
+      return '<div class="logo"><img src="' + src + '" alt=""><div class="lbtns">' +
+        '<button type="button" data-lmove="' + i + '" data-dir="-1" aria-label="←"' + (i ? '' : ' disabled') + '>←</button>' +
+        '<button type="button" data-lmove="' + i + '" data-dir="1" aria-label="→"' + (i < e.logos.length - 1 ? '' : ' disabled') + '>→</button>' +
+        '<button type="button" data-ldel="' + i + '" aria-label="' + t('common.delete') + '">✕</button></div></div>';
+    }).join('') : '<span class="empty-note">' + t('ev.noLogos') + '</span>';
+    var lib = logoLib();
+    $('logoLib').innerHTML = lib.length ? lib.map(function (src, i) {
+      return '<div class="logo" data-lpick="' + i + '"><img src="' + src + '" alt=""><div class="lbtns"><button type="button" data-lrm="' + i + '">' + t('ev.libRemove') + '</button></div></div>';
+    }).join('') : '<span class="empty-note">' + t('ev.libEmpty') + '</span>';
+  }
+  ['evTitle', 'evDate', 'evPlace'].forEach(function (id) {
+    $(id).onchange = function () { ev()[{ evTitle: 'title', evDate: 'date', evPlace: 'place' }[id]] = this.value.trim(); save(); };
+  });
+  $('inLogo').onchange = function () {
+    var files = Array.prototype.slice.call(this.files || []); this.value = '';
+    var e = ev(), room = MAX_LOGOS - e.logos.length;
+    if (room <= 0) return toast(t('ev.max', { n: MAX_LOGOS }));
+    Promise.all(files.slice(0, room).map(shrinkImage)).then(function (list) {
+      var lib = logoLib();
+      list.forEach(function (d) { e.logos.push(d); if (lib.indexOf(d) < 0) lib.unshift(d); });
+      saveLogoLib(lib); save(); renderEvent();
+    }).catch(function () { toast(t('ev.badImage')); });
+  };
+  $('evLogos').onclick = function (x) {
+    var e = ev(), b = x.target.closest('button'); if (!b) return;
+    if (b.dataset.ldel != null) { e.logos.splice(+b.dataset.ldel, 1); }
+    else if (b.dataset.lmove != null) { var i = +b.dataset.lmove, j = i + (+b.dataset.dir), tmp = e.logos[i]; e.logos[i] = e.logos[j]; e.logos[j] = tmp; }
+    save(); renderEvent();
+  };
+  $('bLogoLib').onclick = function () { var open = $('logoLib').hidden; $('logoLib').hidden = !open; this.setAttribute('aria-expanded', open); renderEvent(); };
+  $('logoLib').onclick = function (x) {
+    var lib = logoLib(), rm = x.target.closest('[data-lrm]');
+    if (rm) { x.stopPropagation(); lib.splice(+rm.dataset.lrm, 1); saveLogoLib(lib); return renderEvent(); }
+    var pk = x.target.closest('[data-lpick]'); if (!pk) return;
+    var e = ev(), d = lib[+pk.dataset.lpick];
+    if (e.logos.indexOf(d) >= 0) return toast(t('ev.already'));
+    if (e.logos.length >= MAX_LOGOS) return toast(t('ev.max', { n: MAX_LOGOS }));
+    e.logos.push(d); save(); renderEvent();
+  };
+
+  // ---------- Stage overview picture ----------
+  function overviewLabels(st) {
+    var f = fac(st);
+    return pts(st).filter(RB.isControl).map(function (p) {
+      return { lat: p.lat, lon: p.lon, title: p.code || p.type, sub: fmtKm(p.d * f / 1000, CFG.navDec) + ' km', kind: p.type };
+    });
+  }
+  function renderOverview(st, w, h) {
+    var opts = { track: st.track, labels: overviewLabels(st), color: st.color, layer: S.sat ? 'sat' : 'osm', w: w, h: h };
+    var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
+    return fontReady.then(function () { return RBO.render(opts); }).then(function (cv) {
+      try { cv.toDataURL('image/png'); return cv; } // a tile without CORS would block reading the picture
+      catch (e) { opts.noTiles = true; return RBO.render(opts).then(function (c2) { c2.missingTiles = -1; return c2; }); }
+    });
+  }
+  function canvasB64(cv) { return cv.toDataURL('image/png').split(',')[1]; }
+  function imgSize(src) { return new Promise(function (ok) { var im = new Image(); im.onload = function () { ok({ w: im.width, h: im.height }); }; im.onerror = function () { ok({ w: 100, h: 100 }); }; im.src = src; }); }
+  function exportOverviewPng() {
+    var st = stage(); if (!st) return toast(t('err.noStage'));
+    toast(t('ov.building'), 8000);
+    var e = ev(), W = 1200, head = 170;
+    renderOverview(st, W, 1400).then(function (map) {
+      return Promise.all(e.logos.map(function (src) { return new Promise(function (ok) { var im = new Image(); im.onload = function () { ok(im); }; im.onerror = function () { ok(null); }; im.src = src; }); }))
+        .then(function (logos) {
+          var cv = document.createElement('canvas'); cv.width = W; cv.height = map.height + head; var g = cv.getContext('2d');
+          g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+          var ls = logos.filter(Boolean), x = 20;
+          ls.forEach(function (im) { var hh = 80, ww = im.width * hh / im.height; g.drawImage(im, x, 14, ww, hh); x += ww + 16; });
+          var tx = ls.length ? x + 10 : 24, font = '"Barlow Condensed", Tahoma, sans-serif';
+          g.fillStyle = '#000'; g.textBaseline = 'top'; g.textAlign = 'left';
+          g.font = 'bold 40px ' + font; g.fillText('Overview ' + st.name, 24, 104);
+          g.font = '600 26px ' + font; g.fillText(fmtKm(lenOf(st) * fac(st) / 1000, CFG.navDec) + ' km' + (e.title ? '   ' + e.title : '') + (e.date ? '   ' + e.date : ''), tx, 22);
+          if (e.place) g.fillText(e.place, tx, 56);
+          g.drawImage(map, 0, head);
+          var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+          cv.toBlob(function (blob) {
+            var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = safeName(st.name) + '_overview_' + day + '.png';
+            document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+            toast(map.missingTiles ? t('ov.partial') : t('ov.done'), map.missingTiles ? 6000 : 3000);
+          }, 'image/png');
+        });
+    }).catch(function () { toast(t('ov.fail'), 5000); });
+  }
+
   // ---------- Excel export (event SS Form layout) ----------
   var scriptCache = {};
   function loadScript(src) {
@@ -715,7 +825,19 @@
     var btn = $('bXlsx'); btn.disabled = true; toast(t('xl.building'), 8000);
     loadScript('vendor/exceljs/exceljs.min.js').then(function () {
       var stages = P.stages.map(function (st) { return Object.assign({}, st, { _len: lenOf(st) }); });
-      return RBX.build(window.ExcelJS, { project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl });
+      var e = ev(), missing = 0;
+      return Promise.all(e.logos.map(function (src) { return imgSize(src).then(function (sz) { return { b64: src.split(',')[1], w: sz.w, h: sz.h }; }); }))
+        .then(function (logos) {
+          return RBX.build(window.ExcelJS, {
+            project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl,
+            event: { title: e.title, date: e.date, place: e.place, logos: logos },
+            overview: function (st) {
+              var real = P.stages.filter(function (x) { return x.id === st.id; })[0];
+              return renderOverview(real, 1080, 1300).then(function (cv) { if (cv.missingTiles) missing++; return { b64: canvasB64(cv), w: cv.width, h: cv.height }; })
+                .catch(function () { return null; });
+            }
+          });
+        }).then(function (buf) { if (missing) setTimeout(function () { toast(t('ov.partial'), 6000); }, 3600); return buf; });
     }).then(function (buf) {
       var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
       var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), a = document.createElement('a');
@@ -1251,7 +1373,7 @@
   function renderAll() {
     $('projName').value = P.name || '';
     $('storeNote').textContent = store.mem ? t('file.storeMem') : t('file.storeOk');
-    renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec();
+    renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();
   }
   setLayer(CFG.layer === 'sat');
   applyI18n(); renderAll(); fitStage();

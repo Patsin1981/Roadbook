@@ -118,6 +118,22 @@
     <div class="tabpane" id="tab-stage" hidden></div>
     <div class="tabpane" id="tab-file" hidden>
       <div class="group">
+        <h3 data-i18n="ev.title"></h3>
+        <label class="field"><span data-i18n="ev.name"></span><input id="evTitle" data-i18n-ph="ev.namePh"></label>
+        <div class="row2">
+          <label class="field"><span data-i18n="ev.date"></span><input id="evDate" data-i18n-ph="ev.datePh"></label>
+          <label class="field"><span data-i18n="ev.place"></span><input id="evPlace" data-i18n-ph="ev.placePh"></label>
+        </div>
+        <span class="set-lbl" data-i18n="ev.logos"></span>
+        <div class="logos" id="evLogos"></div>
+        <div class="row2">
+          <label class="btn"><span data-i18n="ev.addLogo"></span><input type="file" id="inLogo" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple hidden></label>
+          <button id="bLogoLib" aria-expanded="false" data-i18n="ev.fromLib"></button>
+        </div>
+        <div class="logolib" id="logoLib" hidden></div>
+        <p class="note" data-i18n="ev.note"></p>
+      </div>
+      <div class="group">
         <h3 data-i18n="file.import"></h3>
         <label class="btn"><span data-i18n="file.importGpx"></span><input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
         <label class="btn"><span data-i18n="file.openJson"></span><input type="file" id="inJson" accept=".json,application/json" hidden></label>
@@ -242,6 +258,7 @@
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="core.js"></script>
 <script src="i18n.js"></script>
+<script src="overview.js"></script>
 <script src="export-xlsx.js"></script>
 <script src="app.js"></script>
 </body>
