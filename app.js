@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.6.1';
+  var APP_VER = '1.6.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -399,12 +399,14 @@
     return a.length ? '<span class="syms-inline">' + a.map(function (id) { return RBS.svg(id, size); }).join('') + '</span>' : '';
   }
   function instr(p) { var a = LANG === 'th' ? [p.th, p.en] : [p.en, p.th]; return { main: a[0] || a[1] || '', sub: a[0] ? a[1] : '' }; }
-  function rowHTML(p, i, prevKm, f) {
+  var DUP_M = 20; // boxes closer than this to the previous one are usually a double mark
+  function isDup(prev, p, f) { return !!prev && (p.d - prev.d) * f < DUP_M && !(RB.isControl(prev) && RB.isControl(p)); }
+  function rowHTML(p, i, prevKm, f, dup) {
     var km = p.d * f / 1000, ins = instr(p);
-    return '<div class="rb-row' + (p.type === 'DANGER' ? ' danger' : '') + (RB.isControl(p) ? ' ctrl' : '') + (S.sel === p.id ? ' sel' : '') + '" data-id="' + p.id + '">' +
+    return '<div class="rb-row' + (p.type === 'DANGER' ? ' danger' : '') + (RB.isControl(p) ? ' ctrl' : '') + (dup ? ' dup' : '') + (S.sel === p.id ? ' sel' : '') + '" data-id="' + p.id + '">' +
       '<div><span class="rb-no">#' + (i + 1) + '</span><span class="rb-tot">' + fmtKm(km) + '</span><span class="rb-par">' + fmtKm(km - prevKm) + '</span></div>' +
       '<div class="rb-tulip">' + RB.tulipOf(p, { size: 56 }) + '</div>' +
-      '<div class="rb-text">' + tagHTML(p) + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (ins.sub ? '<span class="en">' + RB.esc(ins.sub) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + symsHTML(p, 26) + thumbsHTML(p) + '</div></div>';
+      '<div class="rb-text">' + tagHTML(p) + (dup ? '<span class="dupw">' + t('rb.dup', { m: Math.round((km - prevKm) * 1000) }) + '</span>' : '') + (p.place ? '<span><b>' + RB.esc(p.place) + '</b></span>' : '') + (ins.main ? '<span>' + RB.esc(ins.main) + '</span>' : '') + (ins.sub ? '<span class="en">' + RB.esc(ins.sub) + '</span>' : '') + (p.note ? '<span class="en">' + RB.esc(p.note) + '</span>' : '') + symsHTML(p, 26) + thumbsHTML(p) + '</div></div>';
   }
   function renderRB() {
     var el = $('tab-rb'), st = stage();
@@ -420,7 +422,7 @@
     var ps = pts(st), f = fac(st);
     if (!ps.length) { el.innerHTML = '<div class="empty"><b>' + t('rb.noPoints', { name: RB.esc(st.name) }) + '</b>' + t('rb.noPointsBody') + '</div>'; return; }
     var prev = 0, h = '';
-    ps.forEach(function (p, i) { h += rowHTML(p, i, prev, f); prev = p.d * f / 1000; });
+    ps.forEach(function (p, i) { h += rowHTML(p, i, prev, f, isDup(ps[i - 1], p, f)); prev = p.d * f / 1000; });
     el.innerHTML = h;
     fillImgs(el);
     el.querySelectorAll('.rb-row').forEach(function (r) {
@@ -620,7 +622,7 @@
         var p = RB.pointAt(st.track, cumOf(st), nd); D.d = nd; D.lat = p[0]; D.lon = p[1]; syncDlg(); showDraft();
       };
     });
-    var fmap = { ptTh: 'th', ptEn: 'en', ptNote: 'note', ptCode: 'code', ptTime: 'time' };
+    var fmap = { ptTh: 'th', ptEn: 'en', ptNote: 'note', ptCode: 'code', ptTime: 'time', ptPlace: 'place' };
     Object.keys(fmap).forEach(function (id) {
       $(id).oninput = function () { D[fmap[id]] = id === 'ptCode' ? this.value.toUpperCase() : this.value; if (id === 'ptCode') DautoCode = false; };
       $(id).onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); this.blur(); } };
@@ -643,7 +645,7 @@
   function openPoint(p, isNew) {
     Dorig = p; Dnew = isNew; D = JSON.parse(JSON.stringify(p)); D.branches = D.branches || []; D.code = D.code || ''; D.time = D.time || '';
     DautoCode = isNew && !!D.code;
-    $('ptTh').value = D.th || ''; $('ptEn').value = D.en || ''; $('ptNote').value = D.note || '';
+    $('ptTh').value = D.th || ''; $('ptEn').value = D.en || ''; $('ptNote').value = D.note || ''; $('ptPlace').value = D.place || '';
     $('ptDel').textContent = isNew ? t('pt.discard') : t('pt.delete');
     $('ptSplit').hidden = isNew;
     $('ptSymWrap').open = !!(D.sym && D.sym.length);
@@ -697,7 +699,7 @@
   function instrText(p) { var a = LANG === 'th' ? [p.th, p.en] : [p.en, p.th]; return a[0] || a[1] || ''; }
   function photoCaption(st, p) {
     var ps = pts(st), i = ps.map(function (q) { return q.id; }).indexOf(p.id), km = fmtKm(p.d * fac(st) / 1000, CFG.navDec) + ' km', txt = instrText(p);
-    if (RB.isControl(p)) return [(p.code || p.type), txt, p.time, km].filter(Boolean).join('  ·  ');
+    if (RB.isControl(p)) return [(p.code || p.type), p.place || txt, p.time, km].filter(Boolean).join('  ·  ');
     return [i >= 0 ? t('ph.box', { n: i + 1 }) : '', km, txt].filter(Boolean).join('  ·  ');
   }
   function thumbsHTML(p) {
@@ -1145,8 +1147,27 @@
       });
     })).then(function () { return { b64: cv.toDataURL('image/png').split(',')[1], w: cv.width, h: cv.height }; });
   }
-  function exportXlsx() {
+  function findDups() {
+    var out = [];
+    P.stages.forEach(function (st) {
+      var ps = pts(st), f = fac(st);
+      ps.forEach(function (p, i) { if (isDup(ps[i - 1], p, f)) out.push({ st: st, p: p, no: i + 1, m: Math.round((p.d - ps[i - 1].d) * f) }); });
+    });
+    return out;
+  }
+  function exportXlsx(force) {
     if (!P.stages.length) return toast(t('err.noStage'));
+    var dups = force === true ? [] : findDups();
+    if (dups.length) {
+      var list = dups.slice(0, 8).map(function (x) { return x.st.name + '  #' + x.no + '  (' + x.m + ' m)'; }).join('\n') + (dups.length > 8 ? '\n…' : '');
+      return ask({ title: t('xl.dupTitle', { n: dups.length }), body: t('xl.dupBody', { list: list, m: DUP_M }), ok: t('xl.dupGo'), cancel: t('xl.dupFix') }).then(function (ok) {
+        if (ok) return exportXlsx(true);
+        var x = dups[0]; selectStage(x.st.id, false); S.sel = x.p.id;
+        document.querySelector('.tabs [data-tab=rb]').click();
+        map.setView([x.p.lat, x.p.lon], Math.max(map.getZoom(), 17)); renderRB(); drawPins();
+        var row = document.querySelector('.rb-row.sel'); if (row) row.scrollIntoView({ block: 'center' });
+      });
+    }
     var btn = $('bXlsx'); btn.disabled = true; toast(t('xl.building'), 8000);
     loadScript('vendor/exceljs/exceljs.min.js').then(function () {
       var stages = P.stages.map(function (st) { return Object.assign({}, st, { _len: lenOf(st) }); });
@@ -1174,7 +1195,7 @@
     }).catch(function (e) { toast(t('xl.fail') + (e && e.message ? ' (' + e.message + ')' : ''), 6000); })
       .then(function () { btn.disabled = false; });
   }
-  $('bXlsx').onclick = exportXlsx;
+  $('bXlsx').onclick = function () { exportXlsx(); };
   $('bGpxOut').onclick = function () { if (!P.stages.length) return toast(t('err.noStage')); download(safeName(P.name) + '.gpx', RB.stageGPX(P.stages), 'application/gpx+xml'); };
   $('bLogOut').onclick = exportLog;
   $('projName').onchange = function () { P.name = this.value.trim() || P.name; save(); };

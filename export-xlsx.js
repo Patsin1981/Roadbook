@@ -151,7 +151,7 @@
       if (ctx.photo) ps.forEach(function (p, i) {
         (p.photos || []).filter(function (x) { return x.book; }).forEach(function (x) {
           var km = kmTxt(p.d * f / 1000, cfg), txt = ctx.instr ? ctx.instr(p) : (p.th || p.en || '');
-          if (ctx.isControl(p)) ctrlPh.push({ id: x.id, cap: [p.code || p.type, txt, p.time, km].filter(Boolean).join('   ') });
+          if (ctx.isControl(p)) ctrlPh.push({ id: x.id, cap: [p.code || p.type, p.place || txt, p.time, km].filter(Boolean).join('   ') });
           else { otherPh.push({ id: x.id, cap: [t('ph.box', { n: i + 1 }), km, txt].filter(Boolean).join('  ·  ') }); seeNo[p.id] = i + 1; }
         });
       });
@@ -175,9 +175,11 @@
       var from = ps[0], to = ctrls.length ? ctrls[ctrls.length - 1] : ps[ps.length - 1];
       var label = function (p) {
         if (!p) return '';
+        // header shows code + place (not the turn instruction), e.g. "TC1 บ้านโคกสูง"
         var s = p.code || (ctx.isControl(p) ? p.type : '');
-        var txt = p.th || p.en || '';
-        return (s && txt && txt.indexOf(s) < 0 ? s + ' ' + txt : s || txt).trim();
+        var place = (p.place || '').trim();
+        if (!s && !place) place = p.th || p.en || '';
+        return (s && place && place.indexOf(s) < 0 ? s + ' ' + place : s || place).trim();
       };
       var total = st.track && st.track.length ? (st._len || 0) * f / 1000 : 0;
       var timeA = from && to ? minutesBetween(from.time, to.time) : null;
@@ -263,6 +265,7 @@
         if (code && main && main.toUpperCase().indexOf(code.toUpperCase()) >= 0) code = '';
         var head = (p.type === 'DANGER' ? '!'.repeat(p.danger || 1) + ' ' : '') + code;
         if (head.trim() || p.time) lines.push((head.trim() + (p.time ? '  ' + p.time : '')).trim());
+        if (p.place) lines.push(p.place);
         if (main) lines.push(main);
         if (p.note) lines.push(p.note);
         if (ctx.isControl(p)) lines.push(coordText(p, cfg.coordFmt));

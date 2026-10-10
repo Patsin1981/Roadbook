@@ -40,6 +40,8 @@ var I18N = {
     'stage.tsdNote': 'ความเร็วแต่ละช่วงใช้ตั้งแต่ km ที่กำหนดจนถึงช่วงถัดไป ใช้ระยะตาม roadbook (หลังปรับตัวคูณ)',
     'stage.delete': 'ลบ stage นี้',
 
+    'pt.place': 'สถานที่', 'pt.placePh': 'เช่น บ้านโคกสูง', 'rb.dup': 'ห่างจุดก่อนหน้า {m} ม. ซ้อนกันไหม?',
+    'xl.dupTitle': 'พบจุดที่อาจซ้อนกัน {n} จุด', 'xl.dupBody': '{list}\n\nจุดที่ห่างจุดก่อนหน้าไม่ถึง {m} ม. มักเกิดจากกดมาร์คซ้ำ', 'xl.dupGo': 'ส่งออกต่อ', 'xl.dupFix': 'กลับไปแก้',
     'pt.code': 'รหัส', 'pt.time': 'เวลา', 'pt.dangerLv': 'ระดับอันตราย', 'pt.angle': 'มุม', 'pt.branches': 'ทางแยกอื่น',
     'pt.th': 'คำสั่ง (ไทย)', 'pt.en': 'Instruction (EN)', 'pt.note': 'หมายเหตุ', 'pt.notePh': 'เช่น ทางลูกรัง, สะพานแคบ',
     'pt.none': 'ไม่มี', 'pt.noArrow': 'ไม่มีลูกศร', 'pt.delete': 'ลบจุด', 'pt.discard': 'ไม่เพิ่ม',
@@ -204,6 +206,8 @@ var I18N = {
     'stage.tsdNote': 'Each speed applies from its km until the next section, using roadbook (adjusted) distance',
     'stage.delete': 'Delete this stage',
 
+    'pt.place': 'Place', 'pt.placePh': 'e.g. Ban Khok Sung', 'rb.dup': '{m} m after the previous point. Duplicate?',
+    'xl.dupTitle': '{n} points may be duplicates', 'xl.dupBody': '{list}\n\nPoints less than {m} m after the previous one are usually a double mark', 'xl.dupGo': 'Export anyway', 'xl.dupFix': 'Go back and fix',
     'pt.code': 'Code', 'pt.time': 'Time', 'pt.dangerLv': 'Danger level', 'pt.angle': 'Angle', 'pt.branches': 'Other roads',
     'pt.th': 'Instruction (Thai)', 'pt.en': 'Instruction (EN)', 'pt.note': 'Note', 'pt.notePh': 'e.g. gravel, narrow bridge',
     'pt.none': 'None', 'pt.noArrow': 'No arrow', 'pt.delete': 'Delete point', 'pt.discard': 'Discard',

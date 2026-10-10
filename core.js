@@ -337,11 +337,11 @@
     return { track: out, points: pts };
   }
   function stageCSV(stage) {
-    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Code', 'Time', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Symbols', 'Road', 'Lat', 'Lon']];
+    var f = stage.factor || 1, rows = [['Stage', 'No', 'Total km', 'Partial km', 'Type', 'Code', 'Place', 'Time', 'Angle', 'Instruction TH', 'Instruction EN', 'Note', 'Symbols', 'Road', 'Lat', 'Lon']];
     var prev = 0;
     sortedPoints(stage).forEach(function (p, i) {
       var km = p.d * f / 1000;
-      rows.push([stage.name, i + 1, km.toFixed(3), (km - prev).toFixed(3), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', (p.sym || []).join(' '), (p.round ? 'roundabout ' : '') + (p.road === 'gravel' ? 'gravel' : ''), p.lat.toFixed(6), p.lon.toFixed(6)]);
+      rows.push([stage.name, i + 1, km.toFixed(3), (km - prev).toFixed(3), p.type === 'DANGER' ? 'DANGER ' + '!'.repeat(p.danger || 1) : p.type, p.code || '', p.place || '', p.time || '', p.angle == null ? '' : p.angle, p.th || '', p.en || '', p.note || '', (p.sym || []).join(' '), (p.round ? 'roundabout ' : '') + (p.road === 'gravel' ? 'gravel' : ''), p.lat.toFixed(6), p.lon.toFixed(6)]);
       prev = km;
     });
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');

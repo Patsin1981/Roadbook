@@ -308,3 +308,7 @@ dialog.ph-view form{height:100%;display:grid;grid-template-rows:1fr auto}
 dialog.ph-view img{width:100%;height:100%;object-fit:contain;min-height:0}
 dialog.ph-view .ph-cap{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 12px;color:#fff}
 dialog.ph-view .ph-cap button.primary{background:#fff;color:#000;border-color:#fff}
+.rb-text .dupw{color:var(--red);font-weight:700;font-size:14px}
+.rb-row.dup{box-shadow:inset 0 0 0 2px var(--red)}
+.ctrl-fields .wide{grid-column:1/-1}
+.ctrl-fields .wide input{font-family:var(--t);font-weight:400;font-size:16px}
