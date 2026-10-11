@@ -218,11 +218,12 @@
       s += h2.svg;
     }
     if (opts.ref) {
-      // WRC style: a thin leader with a dot points at the spot where the distance is measured (centre of the junction)
+      // WRC style: a short thin leader ending in an open circle; it runs right into the road line at the spot where the distance is measured
       var my2 = opts.round ? R : 0, side = angle != null && (angle < 0 || Math.abs(angle) >= 170) ? 1 : -1; // keep clear of the arrow (U-turn loops to the left)
-      var dx = side * 30, dy = 26, L = Math.hypot(dx, dy - my2), ux = dx / L, uy = (dy - my2) / L, gap = w * 0.9;
-      s += '<line x1="' + dx + '" y1="' + dy + '" x2="' + (ux * gap).toFixed(1) + '" y2="' + (my2 + uy * gap).toFixed(1) + '" stroke="' + ink + '" stroke-width="' + Math.max(1.2, w * 0.28).toFixed(1) + '"/>';
-      s += '<circle cx="' + dx + '" cy="' + dy + '" r="' + Math.max(1.6, w * 0.45).toFixed(1) + '" fill="' + ink + '"/>';
+      var lw = Math.max(1.2, w * 0.28), cr = Math.max(2.6, w * 0.53), ang = Math.atan2(26, 30 * side), ux = Math.cos(ang), uy = Math.sin(ang), len = 20;
+      var cx = ux * len, cy = my2 + uy * len;
+      s += '<line x1="0" y1="' + my2 + '" x2="' + (cx - ux * cr).toFixed(1) + '" y2="' + (cy - uy * cr).toFixed(1) + '" stroke="' + ink + '" stroke-width="' + lw.toFixed(1) + '"/>';
+      s += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + cr.toFixed(1) + '" fill="none" stroke="' + ink + '" stroke-width="' + lw.toFixed(1) + '"/>';
       // on a plain straight-on box there is no corner to point at, so mark the spot with a short bar across the road
       if (!opts.round && (angle == null || angle === 0) && !(branches || []).length) s += '<line x1="-7" y1="0" x2="7" y2="0" stroke="' + ink + '" stroke-width="' + (w * 0.6).toFixed(1) + '"/>';
     }
