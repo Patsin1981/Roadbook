@@ -333,3 +333,6 @@ body.night #stageSel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .opt-lbl{font-size:14px;color:var(--mute);min-width:84px}
 #ptCurve button,#ptShapeLen button,#ptLead button{min-height:40px;padding:0 9px}
 #ptLead button[data-lead]:not([data-lead=auto]){font-size:20px;padding:0 8px}
+.go-btn{width:100%;border-color:#0050B3;color:#0050B3;font-weight:600}
+.goto{display:flex;gap:8px;align-items:center;justify-content:space-between;background:#0050B3;color:#fff;padding:6px 8px 6px 12px;font-weight:700;font-size:18px}
+.goto button.primary{background:#fff;color:#0050B3;border-color:#fff;flex:none}

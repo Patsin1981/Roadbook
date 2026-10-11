@@ -58,6 +58,7 @@
     <div class="status"><span id="dGps"></span><span id="dSpeed">-- km/h</span><span id="dRec"></span></div>
     <div class="clockrow"><span class="clock" id="dClock">--:--:--</span><span class="due" id="dDue"></span></div>
     <div class="offroute" id="dOff" hidden><span data-i18n="nav.offroute"></span> <span id="dOffM"></span></div>
+    <div class="goto" id="dGo" hidden><span id="dGoTxt"></span><button type="button" id="bGo" class="primary" data-i18n="go.start"></button></div>
     <div class="rb-box next" id="dNext">
       <div class="rb-km"><span class="to" id="dNextIn">--</span><span class="at" id="dNextKm"></span></div>
       <div class="rb-tulip" id="dNextTulip"></div>
@@ -228,6 +229,7 @@
     <label class="field"><span data-i18n="pt.th"></span><input id="ptTh"></label>
     <label class="field"><span data-i18n="pt.en"></span><input id="ptEn"></label>
     <label class="field"><span data-i18n="pt.note"></span><input id="ptNote" data-i18n-ph="pt.notePh"></label>
+    <button type="button" id="ptGo" class="go-btn" data-i18n="go.here"></button>
     <div class="ph-box" id="ptPhotos">
       <div class="ph-head"><span data-i18n="ph.title"></span> <span id="ptPhCount"></span></div>
       <div class="ph-list" id="ptPhList"></div>

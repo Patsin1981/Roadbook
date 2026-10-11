@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.7.1';
+  var APP_VER = '1.8.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -25,7 +25,7 @@
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
     clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
-    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, curve: 'sharp'
+    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, curve: 'sharp', navApp: 'gmaps'
   };
   var CFG = (function () {
     var raw = null, c = {};
@@ -496,6 +496,7 @@
         return '<button type="button" data-kind="' + k + '" aria-pressed="' + (kindOf(st) === k) + '"><i class="kdot" style="background:' + KIND_COLOR[k] + '"></i>' + t('kind.' + k) + '</button>';
       }).join('') + '</div>' +
       '<div class="row2"><label class="field">Section<input id="sSection" value="' + RB.esc(st.section || '') + '"></label><label class="field">Leg<input id="sLeg" value="' + RB.esc(st.leg || '') + '"></label></div>' +
+      '<button type="button" id="sGo" class="go-btn">' + t('go.start') + '</button>' +
       '<div class="kv"><span>' + t('stage.lenGps') + '</span><b>' + (L0 / 1000).toFixed(3) + ' km</b><span>' + t('stage.lenAdj') + '</span><b>' + (L0 * f / 1000).toFixed(3) + ' km</b><span>' + t('stage.nPoints') + '</span><b>' + st.points.length + '</b></div></div>' +
 
       '<div class="group"><h3>' + t('stage.calTitle') + '</h3>' +
@@ -524,6 +525,7 @@
     $('sName').onchange = function () { st.name = this.value.trim() || st.name; save(); renderStageSel(); };
     $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
     $('sOverview').onclick = exportOverviewPng;
+    $('sGo').onclick = function () { var a = stageStart(st); openDirections(a[0], a[1]); };
     $('sLeg').onchange = function () { st.leg = this.value.trim(); save(); };
     el.querySelectorAll('[data-kind]').forEach(function (b) { b.onclick = function () { st.kind = b.dataset.kind; save(); drawTracks(); renderStagePanel(); }; });
     $('sSplit').onclick = function () { autoSplit(st); };
@@ -612,6 +614,7 @@
     };
     $('ptAngle').oninput = function () { D.angle = +this.value; syncDlg(true); };
     $('ptRound').onclick = function () { D.round = !D.round; syncDlg(); };
+    $('ptGo').onclick = function () { if (D) openDirections(D.lat, D.lon); };
     $('ptCurve').onclick = function (e) {
       var b = e.target.closest('[data-curve]'); if (!b) return;
       D.curve = b.dataset.curve;
@@ -1556,6 +1559,15 @@
       $(inId).textContent = dist == null ? '--' : dist >= 1000 ? (dist / 1000).toFixed(2) + 'k' : Math.max(0, Math.round(dist / 10) * 10) + ' m';
     }
   }
+  // directions in the phone's map app from where we are to a point (needs internet; the roadbook itself does not)
+  function stageStart(st) { var p = pts(st)[0]; return p && p.d < 50 ? [p.lat, p.lon] : st.track[0]; }
+  function compass(b) { return ['↑ N', '↗ NE', '→ E', '↘ SE', '↓ S', '↙ SW', '← W', '↖ NW'][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
+  function openDirections(lat, lon) {
+    var ll = (+lat).toFixed(6) + ',' + (+lon).toFixed(6);
+    var url = CFG.navApp === 'waze' ? 'https://waze.com/ul?ll=' + ll + '&navigate=yes' : 'https://www.google.com/maps/dir/?api=1&destination=' + ll + '&travelmode=driving';
+    window.open(url, '_blank');
+  }
+  $('bGo').onclick = function () { var st = stage(); if (st) { var a = stageStart(st); openDirections(a[0], a[1]); } };
   function renderNav() {
     applyNight();
     document.body.classList.toggle('nomap', !CFG.map);
@@ -1578,6 +1590,14 @@
     $('dRec').textContent = CFG.rec && N.on ? t('nav.logged', { n: N.log.length }) : '';
     var off = N.on && N.match && N.match.offRoute && N.fix;
     $('dOff').hidden = !off; if (off) $('dOffM').textContent = Math.round(N.match.off) + ' m';
+    // not on the route yet (driving to the stage): how far the start is, and a button to get directions
+    var go = null, stg = stage();
+    if (N.on && N.fix && stg && stg.track.length && (N.d == null || (N.match && N.match.offRoute && N.match.off > 300))) {
+      var a0 = stageStart(stg), dist = RB.hav([N.fix.lat, N.fix.lon], a0);
+      if (dist > 300) go = { km: (dist / 1000).toFixed(1), dir: compass(RB.bearing([N.fix.lat, N.fix.lon], a0)) };
+    }
+    $('dGo').hidden = !go; if (go) $('dGoTxt').textContent = t('go.far', go);
+    if (go) $('dOff').hidden = true; // still driving to the stage: the blue bar says it better than "off route"
     renderClock(s);
     if (!s) { boxFill(null, null, 'dNextKm', 'dNextTulip', 'dNextText', 'dNextIn'); boxFill(null, null, 'dThenKm', 'dThenTulip', 'dThenText'); $('dTsd').hidden = true; $('bTsd').hidden = true; return; }
     boxFill(s.next, s, 'dNextKm', 'dNextTulip', 'dNextText', 'dNextIn');
@@ -1691,6 +1711,7 @@
       grpH(t('set.map'),
         rowH(t('set.layer'), segH('layer', [['osm', t('fab.map')], ['sat', t('fab.sat')]])) +
         rowH(t('set.drawMode'), segH('drawSnap', [[true, t('draw.snap')], [false, t('draw.line')]])) +
+        rowH(t('set.navApp'), segH('navApp', [['gmaps', 'Google Maps'], ['waze', 'Waze']])) +
         '<div class="set-row"><span class="set-lbl" id="sTiles">' + t('set.tilesCounting') + '</span><button type="button" id="sTilesClear">' + t('set.tilesClear') + '</button></div>') +
 
       grpH(t('set.docs'),
