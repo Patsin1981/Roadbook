@@ -9,6 +9,7 @@
   var ROWS_PER_PAGE = 5;      // matches the printed form and the WRC roadbook
   var DATA_ROW_H = 155;       // points: 5 boxes fill an A5 / A4 page (header rows 2-7 repeat on every page)
   var ROW_PX = DATA_ROW_H * 4 / 3;
+  var DIR_W = 27.4, DIR_PX = Math.floor(DIR_W * 7 + 5); // direction column (E) in characters and in pixels
   var FIRST = 8;              // first data row
 
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -167,8 +168,9 @@
       ws.pageSetup.printTitlesRow = '2:7';
       ws.headerFooter.oddFooter = '&C&"Tahoma"&9' + (ctx.project.name || '') + '  ' + st.name + '   &P / &N';
       ws.columns = [
-        { width: 1.5 }, { width: 9.9 }, { width: 13.6 }, { width: 11 }, { width: 21.4 },
-        { width: 2.4 }, { width: 16.3 }, { width: 9.2 }, { width: 9 }, { width: 11 }, { width: 13 }, { width: isSS ? 4.5 : 1 }
+        // B is only a spacer now: the box number sits inside the direction box (WRC), so E gets the room
+        { width: 1.5 }, { width: 1.5 }, { width: 13.6 }, { width: 11 }, { width: DIR_W },
+        { width: 2.4 }, { width: 18.7 }, { width: 9.2 }, { width: 9 }, { width: 11 }, { width: 13 }, { width: isSS ? 4.5 : 1 }
       ];
       // ---- header block (rows 2-4) ----
       var ctrls = ps.filter(ctx.isControl);
@@ -187,10 +189,12 @@
       [2, 3, 4].forEach(function (r) { ws.getRow(r).height = 44.4; });
       ws.mergeCells('C2:E2'); ws.mergeCells('C3:E3'); ws.mergeCells('C4:E4');
       ws.mergeCells('J2:J3'); ws.mergeCells('K2:K3');
+      // small caption + big value in one cell, e.g. "From  TC1 บ้านโคกสูง"
+      var capVal = function (cap, val) { return { richText: [{ text: cap + '   ', font: { name: FONT, size: 9 } }, { text: val || '', font: { name: FONT, size: 16, bold: true } }] }; };
       var hv = [
-        ['B2', 'From', { size: 11, h: 'left' }], ['C2', label(from), { size: 16, bold: true, h: 'left' }],
-        ['B3', 'To', { size: 11, h: 'left' }], ['C3', label(to), { size: 16, bold: true, h: 'left' }],
-        ['B4', 'Special stage No.', { size: 9, h: 'left' }], ['C4', st.name, { size: 16, bold: true, h: 'left' }],
+        ['C2', capVal('From', label(from)), { size: 16, bold: true, h: 'left' }],
+        ['C3', capVal('To', label(to)), { size: 16, bold: true, h: 'left' }],
+        ['C4', capVal('Special stage', st.name), { size: 16, bold: true, h: 'left' }],
         ['G2', 'Distance', { size: 11, h: 'left' }], ['H2', +total.toFixed(3), { size: 16, bold: true, fmt: fmt }], ['I2', 'KM', { size: 11 }],
         ['G3', 'Time Allowed', { size: 11, h: 'left' }], ['H3', timeA, { size: 16, bold: true }], ['I3', 'Min', { size: 11 }],
         ['G4', 'Average speed', { size: 11, h: 'left' }], ['I4', 'km/h', { size: 11 }],
@@ -209,13 +213,13 @@
       // same rule as the old form: distance / (time / 60); fall back to the TSD speed set in the app
       avg.value = timeA ? { formula: 'IF(H3>0,H2/(H3/60),"")', result: +(total / (timeA / 60)).toFixed(2) } : speed;
       cellStyle(avg, { size: 16, bold: true, fmt: '0.00' });
-      boxRange(ws, 2, 2, 4, 11);
+      boxRange(ws, 2, 3, 4, 11);
       // ---- table header (rows 6-7) ----
       ws.getRow(6).height = 20; ws.getRow(7).height = 20;
-      ws.mergeCells('B6:B7'); ws.mergeCells('C6:D6'); ws.mergeCells('E6:E7'); ws.mergeCells('F6:J7'); ws.mergeCells('K6:K7');
-      [['B6', 'คำสั่ง'], ['C6', 'ระยะทาง'], ['C7', 'Total'], ['D7', 'Partial'], ['E6', 'Direction'], ['F6', 'Information'], ['K6', 'Distance\nregress']]
+      ws.mergeCells('C6:D6'); ws.mergeCells('E6:E7'); ws.mergeCells('F6:J7'); ws.mergeCells('K6:K7');
+      [['C6', 'ระยะทาง'], ['C7', 'Total'], ['D7', 'Partial'], ['E6', 'Direction'], ['F6', 'Information'], ['K6', 'Distance\nregress']]
         .forEach(function (x) { var c = ws.getCell(x[0]); c.value = x[1]; cellStyle(c, { size: 12, bold: true, fill: 'FFF2F2F2' }); });
-      boxRange(ws, 6, 2, 7, 11);
+      boxRange(ws, 6, 3, 7, 11);
 
       // ---- one row per roadbook point ----
       var last = FIRST + ps.length - 1, prevKm = 0;
@@ -224,22 +228,26 @@
         prevKm = km;
         ws.getRow(r).height = DATA_ROW_H;
         // cumulative total is rebuilt from rounded partials so the printed column always adds up
-        var cTotal = ws.getCell(r, 3), cPart = ws.getCell(r, 4), cReg = ws.getCell(r, 11), cNo = ws.getCell(r, 2);
+        var cTotal = ws.getCell(r, 3), cPart = ws.getCell(r, 4), cReg = ws.getCell(r, 11);
         cPart.value = +part.toFixed(3);
         cTotal.value = i ? { formula: 'C' + (r - 1) + '+D' + r, result: +km.toFixed(3) } : { formula: 'D' + r, result: +part.toFixed(3) };
         cReg.value = r === last ? 0 : { formula: 'K' + (r + 1) + '+D' + (r + 1), result: +((ps[ps.length - 1].d - p.d) * f / 1000).toFixed(3) };
         cellStyle(cTotal, { size: 20, bold: true, fmt: fmt });
         cellStyle(cPart, { size: 16, fmt: fmt });
         cellStyle(cReg, { size: 16, fmt: fmt });
-        // box number; on the last box of a printed page also show the distance to the next box (WRC "Next")
-        var noTxt = String(i + 1), pageEnd = (i + 1) % ROWS_PER_PAGE === 0 && i < ps.length - 1;
+        // last box of a printed page: "Next" distance under Partial (WRC); drawn as a picture so Partial stays a number for the formulas
+        var pageEnd = (i + 1) % ROWS_PER_PAGE === 0 && i < ps.length - 1;
         if (pageEnd) {
-          var nx = (ps[i + 1].d - p.d) * f / 1000;
-          noTxt += '\n\nNext\n' + nx.toFixed(cfg.navDec === 3 ? 3 : 2) + (nx <= 0.2 ? '\nTURN\nQUICKLY' : '');
+          ws.getRow(r).addPageBreak();
+          var nx = (ps[i + 1].d - p.d) * f / 1000, nl = ['Next ' + nx.toFixed(cfg.navDec === 3 ? 3 : 2)];
+          if (nx <= 0.2) nl.push('TURN QUICKLY');
+          if (ctx.textPng) (function (r) {
+            jobs.push(ctx.textPng(nl, 76).then(function (im) {
+              var id = wb.addImage({ base64: im.b64, extension: 'png' });
+              ws.addImage(id, { tl: { nativeCol: 3, nativeColOff: 2 * 9525, nativeRow: r - 1, nativeRowOff: Math.round((ROW_PX - im.h - 6) * 9525) }, ext: { width: im.w, height: im.h }, editAs: 'oneCell' });
+            }));
+          })(r);
         }
-        cNo.value = noTxt;
-        cellStyle(cNo, { size: pageEnd ? 11 : 14, bold: true, v: pageEnd ? 'top' : 'middle' });
-        if (pageEnd) ws.getRow(r).addPageBreak();
         var dir = ws.getCell(r, 5);
         dir.border = BOX;
         if (isSS) {
@@ -279,13 +287,18 @@
           jobs.push(ctx.symbolsPng(p).then(function (im) {
             if (!im) return;
             // symbols sit along the bottom of the information box, like the WRC book
-            var hh = 46, ww = im.w * hh / im.h, boxW = 2.4 * 7 + 16.3 * 7 + 9.2 * 7 + 9 * 7 + 11 * 7;
+            var hh = 46, ww = im.w * hh / im.h, boxW = 2.4 * 7 + 18.7 * 7 + 9.2 * 7 + 9 * 7 + 11 * 7;
             if (ww > boxW - 12) { hh = hh * (boxW - 12) / ww; ww = boxW - 12; }
             var id = wb.addImage({ base64: im.b64, extension: 'png' });
             ws.addImage(id, { tl: { nativeCol: 5, nativeColOff: 4 * 9525, nativeRow: r - 1, nativeRowOff: Math.round((ROW_PX - hh - 8) * 9525) }, ext: { width: ww, height: hh }, editAs: 'oneCell' });
           }));
         }
-        jobs.push(ctx.tulipPng(p).then(function (b64) {
+        if (ctx.boxPng) jobs.push(ctx.boxPng(p, i + 1, DIR_PX - 4, Math.round(ROW_PX) - 4).then(function (im) {
+          // tulip + box number in a small square at the bottom-left, the whole direction box as one transparent picture
+          var id = wb.addImage({ base64: im.b64, extension: 'png' });
+          ws.addImage(id, { tl: { nativeCol: 4, nativeColOff: 2 * 9525, nativeRow: r - 1, nativeRowOff: 2 * 9525 }, ext: { width: im.w, height: im.h }, editAs: 'oneCell' });
+        }));
+        else jobs.push(ctx.tulipPng(p).then(function (b64) {
           var id = wb.addImage({ base64: b64, extension: 'png' });
           // E column ≈ 155 px wide, 120 pt row = 160 px high
           var sz = 148; // E column is about 155 px wide; centre the tulip in the taller box

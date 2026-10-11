@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.6.4';
+  var APP_VER = '1.6.5';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1133,6 +1133,35 @@
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     });
   }
+  // whole Excel direction box: tulip in the middle, box number in a small square bottom-left (WRC); transparent so the SS tint shows
+  function boxPng(p, no, w, h) {
+    return new Promise(function (resolve) {
+      var k = 2, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k;
+      var g = cv.getContext('2d'), sz = Math.min(w - 8, h - 12, 190), img = new Image();
+      var fin = function () {
+        var bs = 30, x = 6, y = h - bs - 6;
+        g.fillStyle = '#fff'; g.fillRect(x * k, y * k, bs * k, bs * k);
+        g.strokeStyle = '#000'; g.lineWidth = 2 * k; g.strokeRect(x * k, y * k, bs * k, bs * k);
+        g.fillStyle = '#000'; g.font = 'bold ' + (String(no).length > 2 ? 15 : 19) * k + 'px Tahoma, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(String(no), (x + bs / 2) * k, (y + bs / 2 + 1) * k);
+        resolve({ b64: cv.toDataURL('image/png').split(',')[1], w: w, h: h });
+      };
+      img.onload = function () { g.drawImage(img, (w - sz) / 2 * k, (h - sz) / 2 * k - 6 * k, sz * k, sz * k); fin(); };
+      img.onerror = fin;
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(RB.tulipOf(p, { size: 300, ink: '#000', stroke: 6 }));
+    });
+  }
+  // small lines of bold text as a transparent picture (Excel "Next" note under Partial)
+  function textPng(lines, w) {
+    var k = 2, lh = 18, h = lines.length * lh + 4, cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k;
+    var g = cv.getContext('2d'); g.fillStyle = '#000'; g.textAlign = 'center'; g.textBaseline = 'top';
+    lines.forEach(function (l, i) {
+      var fs = i ? 12 : 14; g.font = 'bold ' + fs * k + 'px Tahoma, Arial, sans-serif';
+      while (fs > 7 && g.measureText(l).width > (w - 4) * k) { fs--; g.font = 'bold ' + fs * k + 'px Tahoma, Arial, sans-serif'; }
+      g.fillText(l, w / 2 * k, (2 + i * lh) * k);
+    });
+    return Promise.resolve({ b64: cv.toDataURL('image/png').split(',')[1], w: w, h: h });
+  }
   function symbolsPng(p) {
     var ids = (p.sym || []).filter(function (id) { return RBS.BY[id]; });
     if (!ids.length) return Promise.resolve(null);
@@ -1175,7 +1204,7 @@
       return Promise.all(e.logos.map(function (src) { return imgSize(src).then(function (sz) { return { b64: src.split(',')[1], w: sz.w, h: sz.h }; }); }))
         .then(function (logos) {
           return RBX.build(window.ExcelJS, {
-            project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, isControl: RB.isControl, symbolsPng: symbolsPng,
+            project: P, stages: stages, cfg: CFG, t: t, lang: LANG, tulipPng: tulipPng, boxPng: boxPng, textPng: textPng, isControl: RB.isControl, symbolsPng: symbolsPng,
             photo: CFG.xlPhotos === false ? null : function (id) { return RBP.b64(id).catch(function () { return null; }); },
             instr: function (p) { return instrText(p); },
             event: { title: e.title, date: e.date, place: e.place, logos: logos },
