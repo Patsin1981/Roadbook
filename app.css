@@ -336,3 +336,17 @@ body.night #stageSel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .go-btn{width:100%;border-color:#0050B3;color:#0050B3;font-weight:600}
 .goto{display:flex;gap:8px;align-items:center;justify-content:space-between;background:#0050B3;color:#fff;padding:6px 8px 6px 12px;font-weight:700;font-size:18px}
 .goto button.primary{background:#fff;color:#0050B3;border-color:#fff;flex:none}
+.tulip-edit{grid-template-columns:154px 1fr}
+#ptPreview{touch-action:none;user-select:none;-webkit-user-select:none}
+#ptPreview [data-stk]{cursor:grab}
+.bopts{display:grid;gap:4px;margin-top:6px}
+.bopt{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.bopt button{min-height:34px;padding:0 7px;font-size:13px}
+.bopt button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.bopt .bico{display:inline-flex;border:1px solid var(--ink);background:#fff}
+.bopt .boff{font-size:12px;min-width:44px;text-align:center;color:var(--mute)}
+.stk-ctl{display:inline-flex;gap:4px}
+.stk-ctl button{min-height:38px}
+.stkpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:5px;max-height:260px;overflow:auto;border:1.5px solid var(--ink);padding:6px}
+.stkpick button{min-height:58px;padding:3px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;line-height:1.1;background:#fff;color:#000}
+.stkpick .lbl-board{background:#FFD400;border:1.5px solid #000;font:700 12px Arial,sans-serif;padding:2px 5px}

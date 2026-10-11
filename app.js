@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.8.0';
+  var APP_VER = '1.9.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -214,7 +214,7 @@
     if (p.curve !== 'gps') return;
     len = len || (p.shape && p.shape.len) || 200;
     var r = RB.roadShape(st.track, cumOf(st), p.d, len);
-    if (r) { r.len = len; p.shape = r; } else { p.curve = 'sharp'; delete p.shape; }
+    if (r) { r.len = len; if (p.osm) r.side = sideRoads(st, p.osm, r.tf); delete r.tf; p.shape = r; } else { p.curve = 'sharp'; delete p.shape; }
   }
 
   function drawTracks() {
@@ -586,7 +586,9 @@
     $('ptPresets').innerHTML = RB.PRESETS.map(function (p) { return '<button type="button" data-a="' + p.a + '" title="' + (LANG === 'th' ? p.th : p.en) + '">' + RB.tulipSVG(p.a, [], { size: 40, stroke: 7 }) + '</button>'; }).join('') +
       '<button type="button" data-a="none" title="' + t('pt.noArrow') + '">' + RB.tulipSVG(null, [], { size: 40, stroke: 7 }) + '</button>';
     $('ptBranches').innerHTML = BRANCH_SET.map(function (a) { return '<button type="button" data-b="' + a + '" aria-label="' + a + '°">' + RB.tulipSVG(null, [a], { size: 28, stroke: 7 }) + '</button>'; }).join('');
-    var groups = [['ctrl', t('sym.gCtrl')], ['road', t('sym.gRoad')], ['mark', t('sym.gMark')]];
+    var groups = [['ctrl', t('sym.gCtrl')], ['road', t('sym.gRoad')], ['sign', t('sym.gSign')], ['mark', t('sym.gMark')]];
+    $('ptStkPick').innerHTML = '<button type="button" data-stk-add="label" class="stk-label"><span class="lbl-board">ABC</span><span>' + t('stk.label') + '</span></button>' +
+      RBS.LIST.map(function (x) { return '<button type="button" data-stk-add="' + x.id + '">' + RBS.svg(x.id, 30) + '<span>' + RB.esc(LANG === 'th' ? x.th : x.en) + '</span></button>'; }).join('');
     $('ptSyms').innerHTML = groups.map(function (g) {
       return '<h4>' + g[1] + '</h4><div class="symgrid">' + RBS.LIST.filter(function (x) { return x.g === g[0]; }).map(function (x) {
         return '<button type="button" data-sym="' + x.id + '" aria-pressed="false">' + RBS.svg(x.id, 32) + '<span>' + RB.esc(LANG === 'th' ? x.th : x.en) + '</span></button>';
@@ -633,7 +635,7 @@
     };
     $('ptBranches').onclick = function (e) {
       var b = e.target.closest('[data-b]'); if (!b) return; var a = +b.dataset.b, i = D.branches.indexOf(a);
-      if (i >= 0) D.branches.splice(i, 1); else D.branches.push(a); syncDlg();
+      if (i >= 0) { D.branches.splice(i, 1); if (D.bopt) delete D.bopt[a]; } else D.branches.push(a); syncDlg();
     };
     document.querySelectorAll('[data-nudge]').forEach(function (b) {
       b.onclick = function () {
@@ -650,8 +652,10 @@
       var st = stage();
       D.code = (D.code || '').trim();
       if (!D.photos || !D.photos.length) delete D.photos;
-      if (D.curve !== 'gps') delete D.shape;
-      if (Dnew) st.points.push(D); else { if (!D.photos) delete Dorig.photos; if (typeof D.lead !== 'number') delete Dorig.lead; if (!D.shape) delete Dorig.shape; Object.assign(Dorig, D); }
+      if (D.curve !== 'gps') { delete D.shape; delete D.osm; }
+      if (D.stk && !D.stk.length) delete D.stk;
+      if (D.bopt && !Object.keys(D.bopt).length) delete D.bopt;
+      if (Dnew) st.points.push(D); else { if (!D.photos) delete Dorig.photos; if (typeof D.lead !== 'number') delete Dorig.lead; if (!D.shape) delete Dorig.shape; ['osm', 'stk', 'bopt'].forEach(function (k) { if (!D[k]) delete Dorig[k]; }); Object.assign(Dorig, D); }
       S.sel = D.id; save(); $('ptDlg').close(); renderAll();
     };
     $('ptDel').onclick = function () {
@@ -662,7 +666,101 @@
     };
     $('ptDlg').addEventListener('close', function () { if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; } D = null; gcPhotos(); });
   })();
+  // ---- side road options, things in the tulip, side roads from the map ----
+  var Dsel = -1, drag = null;
+  function renderBopt() {
+    var bs = (D.branches || []).slice().sort(function (a, b) { return a - b; }), bo = D.bopt || {};
+    $('ptBopt').innerHTML = bs.map(function (b) {
+      var o = bo[b] || {}, off = o.o || 0;
+      return '<div class="bopt" data-bk="' + b + '"><span class="bico">' + RB.tulipSVG(null, [b], { size: 26, stroke: 7 }) + '</span>' +
+        '<button type="button" data-bo="c" aria-pressed="' + !!o.c + '">' + t('b.curve') + '</button><button type="button" data-bo="t" aria-pressed="' + !!o.t + '">' + t('b.thick') + '</button><button type="button" data-bo="g" aria-pressed="' + !!o.g + '">' + t('b.gravel') + '</button>' +
+        '<button type="button" data-bs="-6" aria-label="▼">▼</button><span class="boff">' + (off ? t(off < 0 ? 'b.before' : 'b.after', { n: Math.abs(off) }) : t('b.at')) + '</span><button type="button" data-bs="6" aria-label="▲">▲</button></div>';
+    }).join('');
+  }
+  $('ptBopt').onclick = function (e) {
+    var row = e.target.closest('[data-bk]'), b = e.target.closest('button'); if (!row || !b || !D) return;
+    D.bopt = D.bopt || {}; var k = row.dataset.bk, o = D.bopt[k] = D.bopt[k] || {};
+    if (b.dataset.bo) o[b.dataset.bo] = !o[b.dataset.bo];
+    if (b.dataset.bs) o.o = Math.max(-24, Math.min(24, (o.o || 0) + +b.dataset.bs));
+    Object.keys(o).forEach(function (x) { if (!o[x]) delete o[x]; }); if (!Object.keys(o).length) delete D.bopt[k];
+    syncDlg();
+  };
+  function renderStkCtl() { $('ptStkCtl').hidden = !(D.stk && D.stk[Dsel]); }
+  $('ptStkAdd').onclick = function () { var pk = $('ptStkPick'); pk.hidden = !pk.hidden; };
+  $('ptStkPick').onclick = function (e) {
+    var b = e.target.closest('[data-stk-add]'); if (!b || !D) return;
+    var add = function (k) { D.stk = (D.stk || []).concat([k]); Dsel = D.stk.length - 1; $('ptStkPick').hidden = true; syncDlg(); };
+    if (b.dataset.stkAdd === 'label') {
+      ask({ title: t('stk.labelAsk'), input: D.place || D.th || '', label: t('stk.labelAsk') }).then(function (txt) { if (txt && txt.trim()) add({ id: 'label', t: txt.trim(), x: 22, y: 6, s: 22 }); });
+    } else add({ id: b.dataset.stkAdd, x: 24, y: 8, s: 18 });
+  };
+  $('ptStkCtl').onclick = function (e) {
+    var b = e.target.closest('button'); if (!b || !D || !D.stk || !D.stk[Dsel]) return;
+    if (b.id === 'ptStkDel') { D.stk.splice(Dsel, 1); Dsel = -1; if (!D.stk.length) delete D.stk; }
+    else D.stk[Dsel].s = Math.max(8, Math.min(44, (D.stk[Dsel].s || 18) + +b.dataset.z));
+    syncDlg();
+  };
+  // drag things around in the preview (finger or mouse); tulip units are −50…50 across the box
+  function unitXY(e) { var r = $('ptPreview').querySelector('svg').getBoundingClientRect(); return [(e.clientX - r.left) / r.width * 100 - 50, (e.clientY - r.top) / r.height * 100 - 50]; }
+  $('ptPreview').addEventListener('pointerdown', function (e) {
+    if (!D) return;
+    var g = e.target.closest('[data-stk]');
+    if (!g) { if (Dsel >= 0) { Dsel = -1; syncDlg(); } return; }
+    Dsel = +g.dataset.stk; var k = D.stk[Dsel], u = unitXY(e);
+    drag = { dx: k.x - u[0], dy: k.y - u[1] };
+    try { this.setPointerCapture(e.pointerId); } catch (x) {}
+    e.preventDefault(); syncDlg();
+  });
+  $('ptPreview').addEventListener('pointermove', function (e) {
+    if (!drag || !D || !D.stk || !D.stk[Dsel]) return;
+    var u = unitXY(e), k = D.stk[Dsel];
+    k.x = Math.round(Math.max(-46, Math.min(46, u[0] + drag.dx))); k.y = Math.round(Math.max(-46, Math.min(46, u[1] + drag.dy)));
+    $('ptPreview').innerHTML = RB.tulipOf(D, { size: 150, ink: '#000', interactive: true, selStk: Dsel });
+  });
+  ['pointerup', 'pointercancel'].forEach(function (ev) { $('ptPreview').addEventListener(ev, function () { drag = null; }); });
+  // side roads from OpenStreetMap around the point (needs internet once; kept with the point afterwards)
+  var SKIP_HW = { footway: 1, cycleway: 1, steps: 1, pedestrian: 1, bridleway: 1, corridor: 1, path: 1, platform: 1, proposed: 1, construction: 1, elevator: 1 };
+  function sideRoads(st, osm, tf) {
+    var cum = cumOf(st), out = [];
+    osm.forEach(function (w) {
+      var on = w.p.map(function (q) { var r = RB.project(st.track, cum, q[0], q[1]); return r && r.off < 15; });
+      var run = null;
+      var flush = function () { if (run && run.length > 1) out.push({ p: run, major: /^(motorway|trunk|primary|secondary)/.test(w.h), gravel: w.h === 'track' || /unpaved|gravel|dirt|ground|sand|earth/.test(w.s || '') }); run = null; };
+      w.p.forEach(function (q, i) {
+        var xy = RB.shapeXY(tf, q[0], q[1]);
+        if (on[i]) { if (run) { run.push(xy); flush(); } return; }
+        if (!run) { run = []; if (i > 0 && on[i - 1]) run.push(RB.shapeXY(tf, w.p[i - 1][0], w.p[i - 1][1])); }
+        run.push(xy);
+      });
+      flush();
+    });
+    // keep only lines that reach into the box
+    return out.filter(function (sd) { return sd.p.some(function (q) { return Math.abs(q[0]) < 50 && Math.abs(q[1]) < 50; }); });
+  }
+  function fetchSideRoads() {
+    var st = stage(), target = D; if (!st || !D) return;
+    if (D.curve !== 'gps') { D.curve = 'gps'; refreshShape(st, D, 200); if (D.curve !== 'gps') return toast(t('pt.shapeNone')); }
+    $('ptOsmMsg').textContent = t('osm.loading');
+    var q = '[out:json][timeout:20];way(around:150,' + D.lat.toFixed(6) + ',' + D.lon.toFixed(6) + ')[highway];(._;>;);out body;';
+    fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) {
+        if (D !== target) return;
+        var nodes = {}; j.elements.forEach(function (el) { if (el.type === 'node') nodes[el.id] = [+el.lat.toFixed(6), +el.lon.toFixed(6)]; });
+        D.osm = j.elements.filter(function (el) { return el.type === 'way' && el.tags && el.tags.highway && !SKIP_HW[el.tags.highway]; })
+          .map(function (w) { return { h: w.tags.highway, s: w.tags.surface || '', p: w.nodes.map(function (id) { return nodes[id]; }).filter(Boolean) }; });
+        refreshShape(st, D);
+        var n = D.shape && D.shape.side ? D.shape.side.length : 0;
+        $('ptOsmMsg').textContent = n ? t('osm.done', { n: n }) : t('osm.none');
+        if (!n) delete D.osm;
+        syncDlg();
+      })
+      .catch(function () { if (D === target) $('ptOsmMsg').textContent = t('osm.fail'); });
+  }
+  $('ptOsm').onclick = fetchSideRoads;
+  $('ptOsmClear').onclick = function () { if (!D) return; delete D.osm; if (D.shape) delete D.shape.side; $('ptOsmMsg').textContent = ''; syncDlg(); };
   function openPoint(p, isNew) {
+    Dsel = -1; drag = null; $('ptStkPick').hidden = true; $('ptOsmMsg').textContent = '';
     Dorig = p; Dnew = isNew; D = JSON.parse(JSON.stringify(p)); D.branches = D.branches || []; D.code = D.code || ''; D.time = D.time || '';
     DautoCode = isNew && !!D.code;
     $('ptTh').value = D.th || ''; $('ptEn').value = D.en || ''; $('ptNote').value = D.note || ''; $('ptPlace').value = D.place || '';
@@ -689,7 +787,10 @@
     document.querySelectorAll('#ptBranches [data-b]').forEach(function (b) { b.setAttribute('aria-pressed', D.branches.indexOf(+b.dataset.b) >= 0); });
     if (!fromSlider) $('ptAngle').value = D.angle == null ? 0 : D.angle;
     $('ptAngleOut').textContent = D.angle == null ? t('pt.none') : (D.angle > 0 ? '+' : '') + D.angle + '°';
-    $('ptPreview').innerHTML = RB.tulipOf(D, { size: 110, ink: '#000' });
+    $('ptPreview').innerHTML = RB.tulipOf(D, { size: 150, ink: '#000', interactive: true, selStk: Dsel });
+    renderBopt(); renderStkCtl();
+    $('ptOsm').hidden = $('ptOsmClear').hidden = (D.curve || 'sharp') !== 'gps';
+    if (!$('ptOsm').hidden) $('ptOsmClear').hidden = !D.osm;
     $('ptRound').setAttribute('aria-pressed', !!D.round);
     var cv = D.curve || 'sharp';
     document.querySelectorAll('#ptCurve [data-curve]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.curve === cv); });

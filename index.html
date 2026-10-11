@@ -195,6 +195,7 @@
           <input type="range" id="ptAngle" min="-180" max="180" step="5">
         </label>
         <div class="branches"><span data-i18n="pt.branches"></span><span id="ptBranches"></span></div>
+        <div class="bopts" id="ptBopt"></div>
       </div>
     </div>
     <div class="road-row">
@@ -214,6 +215,9 @@
       <div class="seg" role="group" id="ptShapeLen" hidden>
         <button type="button" data-slen="100">100 m</button><button type="button" data-slen="200">200 m</button><button type="button" data-slen="300">300 m</button>
       </div>
+      <button type="button" id="ptOsm" hidden data-i18n="osm.get"></button>
+      <button type="button" id="ptOsmClear" hidden data-i18n="osm.clear"></button>
+      <span class="note" id="ptOsmMsg"></span>
     </div>
     <div class="opt-row"><span class="opt-lbl" data-i18n="pt.lead"></span>
       <div class="seg" role="group" id="ptLead">
@@ -222,6 +226,11 @@
         <button type="button" data-lead="45" aria-label="↗">↗</button><button type="button" data-lead="90" aria-label="→">→</button><button type="button" data-lead="135" aria-label="↘">↘</button>
       </div>
     </div>
+    <div class="opt-row"><span class="opt-lbl" data-i18n="pt.stk"></span>
+      <button type="button" id="ptStkAdd" data-i18n="stk.add"></button>
+      <span class="stk-ctl" id="ptStkCtl" hidden><button type="button" data-z="-3">−</button><button type="button" data-z="3">+</button><button type="button" id="ptStkDel" class="danger-btn" data-i18n="common.delete"></button></span>
+    </div>
+    <div class="stkpick" id="ptStkPick" hidden></div>
     <details class="symwrap" id="ptSymWrap">
       <summary><span data-i18n="pt.symbols"></span> <span id="ptSymCount"></span></summary>
       <div id="ptSyms"></div>
