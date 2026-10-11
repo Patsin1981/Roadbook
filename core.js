@@ -217,10 +217,21 @@
       s += line('M0,40 L0,0 L' + h2.bx.toFixed(1) + ',' + h2.by.toFixed(1));
       s += h2.svg;
     }
+    if (opts.ref) {
+      // WRC style: a thin leader with a dot points at the spot where the distance is measured (centre of the junction)
+      var my2 = opts.round ? R : 0, side = angle != null && (angle < 0 || Math.abs(angle) >= 170) ? 1 : -1; // keep clear of the arrow (U-turn loops to the left)
+      var dx = side * 30, dy = 26, L = Math.hypot(dx, dy - my2), ux = dx / L, uy = (dy - my2) / L, gap = w * 0.9;
+      s += '<line x1="' + dx + '" y1="' + dy + '" x2="' + (ux * gap).toFixed(1) + '" y2="' + (my2 + uy * gap).toFixed(1) + '" stroke="' + ink + '" stroke-width="' + Math.max(1.2, w * 0.28).toFixed(1) + '"/>';
+      s += '<circle cx="' + dx + '" cy="' + dy + '" r="' + Math.max(1.6, w * 0.45).toFixed(1) + '" fill="' + ink + '"/>';
+      // on a plain straight-on box there is no corner to point at, so mark the spot with a short bar across the road
+      if (!opts.round && (angle == null || angle === 0) && !(branches || []).length) s += '<line x1="-7" y1="0" x2="7" y2="0" stroke="' + ink + '" stroke-width="' + (w * 0.6).toFixed(1) + '"/>';
+    }
     return s + '</svg>';
   }
+  var REF = true; // measuring-point marker on roadbook tulips (setting)
+  function setRef(on) { REF = !!on; }
   function tulipOf(p, opts) {
-    opts = Object.assign({}, opts || {}, { round: !!p.round, gravel: p.road === 'gravel' });
+    opts = Object.assign({ ref: REF }, opts || {}, { round: !!p.round, gravel: p.road === 'gravel' });
     return tulipSVG(p.angle, p.branches, opts);
   }
 
@@ -374,7 +385,7 @@
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
-    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit
+    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);

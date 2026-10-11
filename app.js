@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.6.3';
+  var APP_VER = '1.6.4';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -25,7 +25,7 @@
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
     clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
-    paper: 'A5', coordFmt: 'ddm', xlPhotos: true
+    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true
   };
   var CFG = (function () {
     var raw = null, c = {};
@@ -1645,7 +1645,7 @@
       grpH(t('set.docs'),
         rowH(t('set.paper'), segH('paper', [['A5', 'A5'], ['A4', 'A4']])) +
         rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])) +
-        chkH('xlPhotos', t('set.xlPhotos')),
+        chkH('refMark', t('set.refMark')) + chkH('xlPhotos', t('set.xlPhotos')),
         t('set.docsNote')) +
 
       grpH(t('set.data'),
@@ -1711,6 +1711,7 @@
   }
   function cfgChanged(k) {
     saveCfg();
+    RB.setRef(CFG.refMark !== false);
     if (k === 'layer') setLayer(CFG.layer === 'sat');
     if ((k === 'offRoute' || k === 'navAcc') && N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
     if (k === 'map') setTimeout(function () { map.invalidateSize(); }, 60);
@@ -1749,6 +1750,7 @@
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();
   }
   setLayer(CFG.layer === 'sat');
+  RB.setRef(CFG.refMark !== false);
   applyI18n(); renderAll(); fitStage();
   if (R.startT) toast(t('rec.restored'), 4000);
   else if (CFG.backup && P.stages.length && META.dirtySince && Date.now() - META.dirtySince > 86400000) {
