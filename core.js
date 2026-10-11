@@ -284,6 +284,20 @@
     var raw = [], at = 0;
     for (var i = 0; i <= N; i++) { var x = a + (b - a) * i / N; raw.push(pointAt(track, cum, x)); if (x <= d) at = i; }
     var lat0 = raw[at][0] * D2R, xy = raw.map(function (p) { return [(p[1] - raw[at][1]) * D2R * 6371000 * Math.cos(lat0), -(p[0] - raw[at][0]) * D2R * 6371000]; });
+    // the recording may carry on past the point and come back the same way (car turned round after the finish):
+    // stop where the line folds back onto itself, so the arrow keeps the direction the rally goes
+    var stepM = (b - a) / N, gapIdx = Math.ceil(40 / stepM), end = xy.length - 1;
+    outer: for (var fi = at + 1; fi < xy.length; fi++) for (var fj = 0; fj < fi - gapIdx; fj++) {
+      if (Math.hypot(xy[fi][0] - xy[fj][0], xy[fi][1] - xy[fj][1]) < 8) { end = Math.max(at, Math.floor((fi + fj) / 2) - 1); break outer; }
+    }
+    xy = xy.slice(0, end + 1);
+    // little or no road after the point (end of the route, or cut above): carry on straight the way we came in
+    var want = Math.min(60, Math.round(len * 0.3 / stepM));
+    if ((xy.length - 1 - at) * stepM < len * 0.2 && at > 0) {
+      var q0 = xy[Math.max(0, at - 4)], q1 = xy[at], vl = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) || 1, vx = (q1[0] - q0[0]) / vl, vy = (q1[1] - q0[1]) / vl;
+      xy = xy.slice(0, at + 1);
+      for (var e = 1; e <= want; e++) xy.push([q1[0] + vx * stepM * e, q1[1] + vy * stepM * e]);
+    }
     // two passes of a moving average about 25 m wide: bends stay, the zig-zag of a wandering GPS (±5 m) goes
     var step = (b - a) / N, hw = Math.max(2, Math.round(12.5 / step));
     var smooth = function (src) {

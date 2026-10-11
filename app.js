@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.7.0';
+  var APP_VER = '1.7.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1803,6 +1803,8 @@
   }
   setLayer(CFG.layer === 'sat');
   RB.setRef(CFG.refMark !== false);
+  // road shapes are redrawn with the current rules each time the app opens
+  P.stages.forEach(function (st) { (st.points || []).forEach(function (p) { if (p.curve === 'gps') refreshShape(st, p); }); });
   applyI18n(); renderAll(); fitStage();
   if (R.startT) toast(t('rec.restored'), 4000);
   else if (CFG.backup && P.stages.length && META.dirtySince && Date.now() - META.dirtySince > 86400000) {
