@@ -203,6 +203,24 @@
         <button type="button" data-road="gravel" data-i18n="pt.gravel"></button>
       </div>
     </div>
+    <div class="opt-row"><span class="opt-lbl" data-i18n="pt.curve"></span>
+      <div class="seg" role="group" id="ptCurve">
+        <button type="button" data-curve="sharp" data-i18n="curve.sharp"></button>
+        <button type="button" data-curve="soft" data-i18n="curve.soft"></button>
+        <button type="button" data-curve="wide" data-i18n="curve.wide"></button>
+        <button type="button" data-curve="gps" data-i18n="curve.gps"></button>
+      </div>
+      <div class="seg" role="group" id="ptShapeLen" hidden>
+        <button type="button" data-slen="100">100 m</button><button type="button" data-slen="200">200 m</button><button type="button" data-slen="300">300 m</button>
+      </div>
+    </div>
+    <div class="opt-row"><span class="opt-lbl" data-i18n="pt.lead"></span>
+      <div class="seg" role="group" id="ptLead">
+        <button type="button" data-lead="auto" data-i18n="lead.auto"></button>
+        <button type="button" data-lead="-135" aria-label="↙">↙</button><button type="button" data-lead="-90" aria-label="←">←</button><button type="button" data-lead="-45" aria-label="↖">↖</button>
+        <button type="button" data-lead="45" aria-label="↗">↗</button><button type="button" data-lead="90" aria-label="→">→</button><button type="button" data-lead="135" aria-label="↘">↘</button>
+      </div>
+    </div>
     <details class="symwrap" id="ptSymWrap">
       <summary><span data-i18n="pt.symbols"></span> <span id="ptSymCount"></span></summary>
       <div id="ptSyms"></div>

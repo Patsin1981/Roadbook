@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.6.6';
+  var APP_VER = '1.7.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -25,7 +25,7 @@
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
     clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
-    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true
+    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, curve: 'sharp'
   };
   var CFG = (function () {
     var raw = null, c = {};
@@ -206,7 +206,15 @@
     var pre = type === 'TULIP' ? RB.nearestPreset(ang) : null;
     var pt = { id: uid(), d: d, lat: p[0], lon: p[1], type: type, danger: 1, angle: ang, branches: [], th: pre ? pre.th : '', en: pre ? pre.en : '', note: '', code: '', time: '' };
     if (RB.isControl(pt)) pt.code = RB.suggestCode(st.points, pt);
+    if (CFG.curve && CFG.curve !== 'sharp') { pt.curve = CFG.curve; if (pt.curve === 'gps') refreshShape(st, pt, 200); }
     return pt;
+  }
+  // tulip from the real road: recomputed whenever the point moves along the route
+  function refreshShape(st, p, len) {
+    if (p.curve !== 'gps') return;
+    len = len || (p.shape && p.shape.len) || 200;
+    var r = RB.roadShape(st.track, cumOf(st), p.d, len);
+    if (r) { r.len = len; p.shape = r; } else { p.curve = 'sharp'; delete p.shape; }
   }
 
   function drawTracks() {
@@ -295,7 +303,7 @@
         m.on('click', function () { if (S.mode === 'org' && !S.draw) { S.sel = p.id; renderRB(); drawPins(); openPoint(p, false); } });
         m.on('dragend', function () {
           var q = m.getLatLng(), r = RB.project(st.track, cumOf(st), q.lat, q.lng);
-          p.d = r.d; p.lat = r.lat; p.lon = r.lon; save(); drawPins(); renderRB();
+          p.d = r.d; p.lat = r.lat; p.lon = r.lon; refreshShape(st, p); save(); drawPins(); renderRB();
           toast(t('toast.moved', { km: fmtKm(p.d * fac(st) / 1000) }));
         });
       } else {
@@ -315,7 +323,7 @@
       m.on('click', function () { if (S.mode === 'org' && !S.draw) { S.sel = p.id; renderRB(); drawPins(); openPoint(p, false); } });
       m.on('dragend', function () {
         var ll = m.getLatLng(), r2 = RB.project(st.track, cumOf(st), ll.lat, ll.lng);
-        p.d = r2.d; p.lat = r2.lat; p.lon = r2.lon; save(); drawPins(); renderRB();
+        p.d = r2.d; p.lat = r2.lat; p.lon = r2.lon; refreshShape(st, p); save(); drawPins(); renderRB();
         toast(t('toast.moved', { km: fmtKm(p.d * fac(st) / 1000) }));
       });
     });
@@ -604,6 +612,14 @@
     };
     $('ptAngle').oninput = function () { D.angle = +this.value; syncDlg(true); };
     $('ptRound').onclick = function () { D.round = !D.round; syncDlg(); };
+    $('ptCurve').onclick = function (e) {
+      var b = e.target.closest('[data-curve]'); if (!b) return;
+      D.curve = b.dataset.curve;
+      if (D.curve === 'gps') { refreshShape(stage(), D, (D.shape && D.shape.len) || 200); if (D.curve !== 'gps') toast(t('pt.shapeNone')); }
+      syncDlg();
+    };
+    $('ptShapeLen').onclick = function (e) { var b = e.target.closest('[data-slen]'); if (b) { refreshShape(stage(), D, +b.dataset.slen); syncDlg(); } };
+    $('ptLead').onclick = function (e) { var b = e.target.closest('[data-lead]'); if (!b) return; if (b.dataset.lead === 'auto') delete D.lead; else D.lead = +b.dataset.lead; syncDlg(); };
     $('ptSplit').onclick = function () { splitAt(stage(), D.d); };
     $('ptRoad').onclick = function (e) { var b = e.target.closest('[data-road]'); if (b) { D.road = b.dataset.road; syncDlg(); } };
     $('ptSyms').onclick = function (e) {
@@ -619,7 +635,7 @@
     document.querySelectorAll('[data-nudge]').forEach(function (b) {
       b.onclick = function () {
         var st = stage(), f = fac(st), nd = Math.max(0, Math.min(lenOf(st), D.d + (+b.dataset.nudge) / f));
-        var p = RB.pointAt(st.track, cumOf(st), nd); D.d = nd; D.lat = p[0]; D.lon = p[1]; syncDlg(); showDraft();
+        var p = RB.pointAt(st.track, cumOf(st), nd); D.d = nd; D.lat = p[0]; D.lon = p[1]; refreshShape(st, D); syncDlg(); showDraft();
       };
     });
     var fmap = { ptTh: 'th', ptEn: 'en', ptNote: 'note', ptCode: 'code', ptTime: 'time', ptPlace: 'place' };
@@ -631,7 +647,8 @@
       var st = stage();
       D.code = (D.code || '').trim();
       if (!D.photos || !D.photos.length) delete D.photos;
-      if (Dnew) st.points.push(D); else { if (!D.photos) delete Dorig.photos; Object.assign(Dorig, D); }
+      if (D.curve !== 'gps') delete D.shape;
+      if (Dnew) st.points.push(D); else { if (!D.photos) delete Dorig.photos; if (typeof D.lead !== 'number') delete Dorig.lead; if (!D.shape) delete Dorig.shape; Object.assign(Dorig, D); }
       S.sel = D.id; save(); $('ptDlg').close(); renderAll();
     };
     $('ptDel').onclick = function () {
@@ -671,6 +688,11 @@
     $('ptAngleOut').textContent = D.angle == null ? t('pt.none') : (D.angle > 0 ? '+' : '') + D.angle + '°';
     $('ptPreview').innerHTML = RB.tulipOf(D, { size: 110, ink: '#000' });
     $('ptRound').setAttribute('aria-pressed', !!D.round);
+    var cv = D.curve || 'sharp';
+    document.querySelectorAll('#ptCurve [data-curve]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.curve === cv); });
+    $('ptShapeLen').hidden = cv !== 'gps';
+    document.querySelectorAll('#ptShapeLen [data-slen]').forEach(function (b) { b.setAttribute('aria-pressed', !!D.shape && +b.dataset.slen === D.shape.len); });
+    document.querySelectorAll('#ptLead [data-lead]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.lead === 'auto' ? typeof D.lead !== 'number' : +b.dataset.lead === D.lead); });
     document.querySelectorAll('#ptRoad [data-road]').forEach(function (b) { b.setAttribute('aria-pressed', (D.road || 'tarmac') === b.dataset.road); });
     var sy = D.sym || [];
     document.querySelectorAll('#ptSyms [data-sym]').forEach(function (b) { b.setAttribute('aria-pressed', sy.indexOf(b.dataset.sym) >= 0); });
@@ -1674,6 +1696,7 @@
       grpH(t('set.docs'),
         rowH(t('set.paper'), segH('paper', [['A5', 'A5'], ['A4', 'A4']])) +
         rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])) +
+        rowH(t('set.curve'), segH('curve', [['sharp', t('curve.sharp')], ['soft', t('curve.soft')], ['wide', t('curve.wide')], ['gps', t('curve.gps')]])) +
         chkH('refMark', t('set.refMark')) + chkH('xlPhotos', t('set.xlPhotos')),
         t('set.docsNote')) +
 

@@ -181,58 +181,138 @@
 
   // Tulip SVG. angle: 0 = straight, + = right, 180 = U-turn, null = no arrow (entry only)
   // opts.round: roundabout (angle = exit direction); opts.gravel: dashed route line (unsealed road)
+  // Tulip drawing. opts: size, ink, stroke, round, gravel,
+  //   curve: 'sharp' | 'soft' | 'wide'  (how the turn is drawn), shape: [[x,y]...] road shape from GPS in tulip units + shapeAt (index of the km point),
+  //   ref: measuring-point marker, lead: 'auto' | bearing of the marker, bar: line across the road (controls)
   function tulipSVG(angle, branches, opts) {
     opts = opts || {};
     var size = opts.size || 64, ink = opts.ink || '#000', w = opts.stroke || 6;
     var dash = opts.gravel ? ' stroke-dasharray="' + (w * 1.6).toFixed(1) + ' ' + (w * 1.3).toFixed(1) + '"' : '';
+    var f1 = function (v) { return (+v).toFixed(1); };
     var line = function (d) { return '<path d="' + d + '" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="' + (dash ? 'butt' : 'round') + '" stroke-linejoin="round"' + dash + '/>'; };
     var head = function (ex, ey, ax, ay) {
       var px = -ay, py = ax, h = 13, hw = 9, bx = ex - ax * h, by = ey - ay * h;
-      return { bx: bx, by: by, svg: '<path d="M' + ex.toFixed(1) + ',' + ey.toFixed(1) + ' L' + (bx + px * hw).toFixed(1) + ',' + (by + py * hw).toFixed(1) + ' L' + (bx - px * hw).toFixed(1) + ',' + (by - py * hw).toFixed(1) + ' Z" fill="' + ink + '"/>' };
+      return { bx: bx, by: by, svg: '<path d="M' + f1(ex) + ',' + f1(ey) + ' L' + f1(bx + px * hw) + ',' + f1(by + py * hw) + ' L' + f1(bx - px * hw) + ',' + f1(by - py * hw) + ' Z" fill="' + ink + '"/>' };
     };
-    var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" width="' + size + '" height="' + size + '" aria-hidden="true">';
-    var R = opts.round ? 13 : 0;
-    (branches || []).forEach(function (b) {
-      var sx = Math.sin(b * D2R), sy = -Math.cos(b * D2R);
-      s += '<line x1="' + (sx * R).toFixed(1) + '" y1="' + (sy * R).toFixed(1) + '" x2="' + (sx * 34).toFixed(1) + '" y2="' + (sy * 34).toFixed(1) + '" stroke="' + ink + '" stroke-width="' + (w * 0.45) + '" stroke-linecap="round"/>';
-    });
-    s += '<circle cx="0" cy="40" r="' + (w * 0.9) + '" fill="' + ink + '"/>';
-    if (opts.round) {
-      s += '<circle cx="0" cy="0" r="' + R + '" fill="none" stroke="' + ink + '" stroke-width="' + (w * 0.55) + '"/>';
+    var brg = function (x, y) { return Math.atan2(x, -y) / D2R; }; // 0 = up, clockwise
+    var unit = function (x, y) { var l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+    var R = opts.round ? 13 : 0, main = '', start = [0, 40];
+    var cpt = [0, R], dirIn = [0, -1], occ = [180]; // km point, travel direction there, bearings already used by lines
+    var shape = !opts.round && opts.shape && opts.shape.length > 3 ? opts.shape : null;
+    if (shape) {
+      // real road shape: smooth line through the points, arrow on the last one
+      var n = shape.length, k = Math.max(1, Math.min(n - 2, opts.shapeAt | 0)), E = shape[n - 1], P2 = shape[Math.max(0, n - 5)];
+      var u = unit(E[0] - P2[0], E[1] - P2[1]), hdS = head(E[0], E[1], u[0], u[1]);
+      var d = 'M' + f1(shape[0][0]) + ',' + f1(shape[0][1]), last = n - 2;
+      while (last > k && Math.hypot(shape[last][0] - E[0], shape[last][1] - E[1]) < 15) last--; // the line stops at the arrow head, never runs back past it
+      for (var i = 1; i < last; i++) d += ' Q' + f1(shape[i][0]) + ',' + f1(shape[i][1]) + ' ' + f1((shape[i][0] + shape[i + 1][0]) / 2) + ',' + f1((shape[i][1] + shape[i + 1][1]) / 2);
+      d += ' L' + f1(hdS.bx) + ',' + f1(hdS.by);
+      main = line(d) + hdS.svg;
+      start = shape[0]; cpt = shape[k];
+      var pb = shape[Math.max(0, k - 2)], pa = shape[Math.min(n - 1, k + 2)];
+      dirIn = unit(cpt[0] - pb[0], cpt[1] - pb[1]);
+      occ = [brg(pb[0] - cpt[0], pb[1] - cpt[1]), brg(pa[0] - cpt[0], pa[1] - cpt[1])];
+    } else if (opts.round) {
       var a = angle == null ? 0 : angle, ax = Math.sin(a * D2R), ay = -Math.cos(a * D2R);
       var hd = head(ax * 40, ay * 40, ax, ay);
       // entry to the ring, around it clockwise (left-hand traffic in Thailand = clockwise), out to the exit
       var a0 = 180, a1 = ((a % 360) + 360) % 360; if (a1 <= a0) a1 += 360;
       // draw the ring part in two halves so a full loop (U-turn at the roundabout) still shows
       var am = (a0 + a1) / 2, mx = Math.sin(am * D2R) * R, my = -Math.cos(am * D2R) * R, ex = Math.sin(a1 * D2R) * R, ey = -Math.cos(a1 * D2R) * R;
-      s += line('M0,40 L0,' + R + ' A' + R + ',' + R + ' 0 0 1 ' + mx.toFixed(1) + ',' + my.toFixed(1) + ' A' + R + ',' + R + ' 0 0 1 ' + ex.toFixed(1) + ',' + ey.toFixed(1) + ' L' + hd.bx.toFixed(1) + ',' + hd.by.toFixed(1));
-      s += hd.svg;
+      main = '<circle cx="0" cy="0" r="' + R + '" fill="none" stroke="' + ink + '" stroke-width="' + (w * 0.55) + '"/>' +
+        line('M0,40 L0,' + R + ' A' + R + ',' + R + ' 0 0 1 ' + f1(mx) + ',' + f1(my) + ' A' + R + ',' + R + ' 0 0 1 ' + f1(ex) + ',' + f1(ey) + ' L' + f1(hd.bx) + ',' + f1(hd.by)) + hd.svg;
+      occ = [180, -90, 90];
     } else if (angle == null) {
-      s += line('M0,40 L0,0');
+      main = line('M0,40 L0,0'); cpt = [0, 0];
     } else if (Math.abs(angle) >= 170) {
-      s += line('M0,40 L0,-12 A13,13 0 0 0 -26,-12 L-26,22');
-      s += '<path d="M-36,16 L-26,34 L-16,16 Z" fill="' + ink + '"/>';
+      main = line('M0,40 L0,-12 A13,13 0 0 0 -26,-12 L-26,22') + '<path d="M-36,16 L-26,34 L-16,16 Z" fill="' + ink + '"/>';
+      cpt = [0, 0]; occ = [180, 0, -45, -90, -130];
     } else {
       var ax2 = Math.sin(angle * D2R), ay2 = -Math.cos(angle * D2R), h2 = head(ax2 * 38, ay2 * 38, ax2, ay2);
-      s += line('M0,40 L0,0 L' + h2.bx.toFixed(1) + ',' + h2.by.toFixed(1));
-      s += h2.svg;
+      var r = opts.curve === 'wide' ? 24 : opts.curve === 'soft' ? 14 : 0;
+      if (r && Math.abs(angle) > 8) {
+        // rounded turn: straight in, a smooth bend through the junction, straight out; the km point is the middle of the bend
+        main = line('M0,40 L0,' + r + ' Q0,0 ' + f1(ax2 * r) + ',' + f1(ay2 * r) + ' L' + f1(h2.bx) + ',' + f1(h2.by)) + h2.svg;
+        cpt = [ax2 * r / 4, (r + ay2 * r) / 4];
+        dirIn = unit(ax2 * r, ay2 * r - r);
+      } else {
+        main = line('M0,40 L0,0 L' + f1(h2.bx) + ',' + f1(h2.by)) + h2.svg; cpt = [0, 0];
+      }
+      occ = [180, angle];
+    }
+    // other roads leave from the km point, turned with the road when it is drawn from GPS
+    var hdg = brg(dirIn[0], dirIn[1]), s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100" width="' + size + '" height="' + size + '" aria-hidden="true">';
+    var bo = opts.round ? [0, 0] : cpt;
+    (branches || []).forEach(function (b) {
+      var ab = (shape ? hdg : 0) + b, sx = Math.sin(ab * D2R), sy = -Math.cos(ab * D2R);
+      s += '<line x1="' + f1(bo[0] + sx * R) + '" y1="' + f1(bo[1] + sy * R) + '" x2="' + f1(bo[0] + sx * 34) + '" y2="' + f1(bo[1] + sy * 34) + '" stroke="' + ink + '" stroke-width="' + (w * 0.45) + '" stroke-linecap="round"/>';
+      occ.push(ab);
+    });
+    s += '<circle cx="' + f1(start[0]) + '" cy="' + f1(start[1]) + '" r="' + (w * 0.9) + '" fill="' + ink + '"/>' + main;
+    if (opts.bar) {
+      // control: a line across the road at the km point (start line, finish line, control board)
+      var qx = -dirIn[1], qy = dirIn[0];
+      s += '<line x1="' + f1(cpt[0] - qx * 8) + '" y1="' + f1(cpt[1] - qy * 8) + '" x2="' + f1(cpt[0] + qx * 8) + '" y2="' + f1(cpt[1] + qy * 8) + '" stroke="' + ink + '" stroke-width="' + f1(w * 0.6) + '"/>';
     }
     if (opts.ref) {
-      // WRC style: a short thin leader ending in an open circle; it runs right into the road line at the spot where the distance is measured
-      var my2 = opts.round ? R : 0, side = angle != null && (angle < 0 || Math.abs(angle) >= 170) ? 1 : -1; // keep clear of the arrow (U-turn loops to the left)
-      var lw = Math.max(1.2, w * 0.28), cr = Math.max(2.6, w * 0.53), ang = Math.atan2(26, 30 * side), ux = Math.cos(ang), uy = Math.sin(ang), len = 20;
-      var cx = ux * len, cy = my2 + uy * len;
-      s += '<line x1="0" y1="' + my2 + '" x2="' + (cx - ux * cr).toFixed(1) + '" y2="' + (cy - uy * cr).toFixed(1) + '" stroke="' + ink + '" stroke-width="' + lw.toFixed(1) + '"/>';
-      s += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + cr.toFixed(1) + '" fill="none" stroke="' + ink + '" stroke-width="' + lw.toFixed(1) + '"/>';
-      // on a plain straight-on box there is no corner to point at, so mark the spot with a short bar across the road
-      if (!opts.round && (angle == null || angle === 0) && !(branches || []).length) s += '<line x1="-7" y1="0" x2="7" y2="0" stroke="' + ink + '" stroke-width="' + (w * 0.6).toFixed(1) + '"/>';
+      // WRC style: a short thin leader ending in an open circle, running right into the road at the km point
+      var lb = typeof opts.lead === 'number' ? opts.lead : pickLeader(occ, angle != null && (angle < 0 || Math.abs(angle) >= 170) ? 1 : -1);
+      var lx = Math.sin(lb * D2R), ly = -Math.cos(lb * D2R), lw = Math.max(1.2, w * 0.28), cr = Math.max(2.6, w * 0.53), len = 20;
+      var cx = cpt[0] + lx * len, cy = cpt[1] + ly * len;
+      s += '<line x1="' + f1(cpt[0]) + '" y1="' + f1(cpt[1]) + '" x2="' + f1(cx - lx * cr) + '" y2="' + f1(cy - ly * cr) + '" stroke="' + ink + '" stroke-width="' + f1(lw) + '"/>';
+      s += '<circle cx="' + f1(cx) + '" cy="' + f1(cy) + '" r="' + f1(cr) + '" fill="none" stroke="' + ink + '" stroke-width="' + f1(lw) + '"/>';
     }
     return s + '</svg>';
+  }
+  // leader direction: the usual lower-left (lower-right for left turns) unless a road is in the way, then the widest free gap
+  function pickLeader(occ, side) {
+    var diff = function (a, b) { return Math.abs(((a - b) % 360 + 540) % 360 - 180); };
+    var pref = side > 0 ? 131 : -131, best = null;
+    for (var c = -175; c <= 180; c += 5) {
+      var clear = Math.min.apply(null, occ.map(function (o) { return diff(c, o); }));
+      var score = Math.min(clear, 40) * 10 - diff(c, pref) * 0.5;
+      if (!best || score > best.s) best = { s: score, c: c };
+    }
+    return best.c;
+  }
+  // road shape around a point for the tulip: track from `before` m ahead of the point to `after` m past it,
+  // smoothed (GPS wobble), turned so the car comes in from below, scaled into the box. Returns { pts, at }.
+  function roadShape(track, cum, d, len) {
+    var total = cum[cum.length - 1], before = Math.min(len * 0.3, 60), after = len - before;
+    var a = Math.max(0, d - before), b = Math.min(total, d + after), N = 32;
+    if (b - a < 20) return null;
+    var raw = [], at = 0;
+    for (var i = 0; i <= N; i++) { var x = a + (b - a) * i / N; raw.push(pointAt(track, cum, x)); if (x <= d) at = i; }
+    var lat0 = raw[at][0] * D2R, xy = raw.map(function (p) { return [(p[1] - raw[at][1]) * D2R * 6371000 * Math.cos(lat0), -(p[0] - raw[at][0]) * D2R * 6371000]; });
+    // two passes of a moving average about 25 m wide: bends stay, the zig-zag of a wandering GPS (±5 m) goes
+    var step = (b - a) / N, hw = Math.max(2, Math.round(12.5 / step));
+    var smooth = function (src) {
+      return src.map(function (p, i) {
+        var h = Math.min(hw, i, src.length - 1 - i), sx = 0, sy = 0, c = 0; // window shrinks at the ends so the line still starts and ends in place
+        for (var j = i - h; j <= i + h; j++) { sx += src[j][0]; sy += src[j][1]; c++; }
+        return [sx / c, sy / c];
+      });
+    };
+    var sm = smooth(smooth(xy));
+    // turn so the approach (start → km point) points straight up
+    var s0 = sm[0], c0 = sm[at];
+    var ang = at > 0 ? Math.atan2(c0[0] - s0[0], -(c0[1] - s0[1])) : Math.atan2(sm[2][0] - c0[0], -(sm[2][1] - c0[1]));
+    var co = Math.cos(-ang), si = Math.sin(-ang);
+    var rot = sm.map(function (p) { var x = p[0] - c0[0], y = p[1] - c0[1]; return [x * co - y * si, x * si + y * co]; });
+    var xs = rot.map(function (p) { return p[0]; }), ys = rot.map(function (p) { return p[1]; });
+    var minx = Math.min.apply(null, xs), maxx = Math.max.apply(null, xs), miny = Math.min.apply(null, ys), maxy = Math.max.apply(null, ys);
+    var k = 78 / Math.max(maxx - minx, maxy - miny, 1);
+    var ox = -(minx + maxx) / 2, oy = -(miny + maxy) / 2;
+    return { pts: rot.map(function (p) { return [+((p[0] + ox) * k).toFixed(1), +((p[1] + oy) * k).toFixed(1)]; }), at: at };
   }
   var REF = true; // measuring-point marker on roadbook tulips (setting)
   function setRef(on) { REF = !!on; }
   function tulipOf(p, opts) {
-    opts = Object.assign({ ref: REF }, opts || {}, { round: !!p.round, gravel: p.road === 'gravel' });
+    opts = Object.assign({ ref: REF }, opts || {}, {
+      round: !!p.round, gravel: p.road === 'gravel', curve: p.curve || 'sharp',
+      shape: p.curve === 'gps' && p.shape ? p.shape.pts : null, shapeAt: p.shape ? p.shape.at : 0,
+      lead: typeof p.lead === 'number' ? p.lead : 'auto', bar: isControl(p)
+    });
     return tulipSVG(p.angle, p.branches, opts);
   }
 
@@ -386,7 +466,7 @@
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
-    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef
+    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, roadShape: roadShape
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);
