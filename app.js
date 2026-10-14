@@ -17,7 +17,11 @@
   // ---------- Storage ----------
   var store = (function () {
     try { localStorage.setItem('rb.t', '1'); localStorage.removeItem('rb.t'); return localStorage; }
-    catch (e) { var m = {}; return { getItem: function (k) { return k in m ? m[k] : null; }, setItem: function (k, v) { m[k] = v; }, removeItem: function (k) { delete m[k]; }, mem: true }; }
+    catch (e) {
+      console.warn('localStorage not available, using in-memory storage:', e.message);
+      var m = {};
+      return { getItem: function (k) { return k in m ? m[k] : null; }, setItem: function (k, v) { m[k] = v; }, removeItem: function (k) { delete m[k]; }, mem: true };
+    }
   })();
 
   // ---------- Settings ----------
@@ -1045,12 +1049,32 @@
     return 'INFO';
   }
   function importGpxText(text, fname) {
-    var g = RB.parseGPX(text), added = 0, wadd = 0, firstId = null;
+    // Validate input
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      console.error('GPX import: empty or invalid file content');
+      throw new Error('Empty file');
+    }
+
+    var g = RB.parseGPX(text);
+    if (!g || (!g.tracks || g.tracks.length === 0) && (!g.waypoints || g.waypoints.length === 0)) {
+      console.error('GPX import: no tracks or waypoints found in', fname);
+      throw new Error('No valid GPX data');
+    }
+
+    var added = 0, wadd = 0, firstId = null;
     g.tracks.forEach(function (tk, i) {
-      var tr = RB.cleanTrack(tk.pts, 2); if (tr.length < 2) return;
+      var tr = RB.cleanTrack(tk.pts, 2);
+      if (tr.length < 2) {
+        console.warn('GPX import: track "' + (tk.name || fname) + '" has insufficient points (' + tr.length + ')');
+        return;
+      }
       var st = addStage(tk.name || (fname.replace(/\.gpx$/i, '') + (g.tracks.length > 1 ? ' ' + (i + 1) : '')), tr);
       var cum = cumOf(st);
       g.waypoints.forEach(function (w) {
+        if (!isFinite(w.lat) || !isFinite(w.lon)) {
+          console.warn('GPX import: waypoint has invalid coordinates', w);
+          return;
+        }
         var r = RB.project(tr, cum, w.lat, w.lon);
         if (r.off > 40) return;
         var ty = guessType(w.name), an = RB.angleAt(tr, cum, r.d, 30);
@@ -1061,6 +1085,12 @@
       });
       added++; if (!firstId) firstId = st.id;
     });
+
+    if (added === 0) {
+      console.error('GPX import: no valid tracks could be imported from', fname);
+      throw new Error('No valid tracks');
+    }
+
     return { added: added, wadd: wadd, firstId: firstId };
   }
   function importGpxFiles(files) {

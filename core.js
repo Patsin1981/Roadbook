@@ -136,6 +136,11 @@
   }
   // Returns {tracks:[{name, pts}], waypoints:[{name, lat, lon}]}
   function parseGPX(text) {
+    if (!text || typeof text !== 'string') {
+      console.warn('parseGPX: invalid input');
+      return { tracks: [], waypoints: [] };
+    }
+
     var tracks = [], wpts = [], m;
     var reTrk = /<trk\b[^>]*>([\s\S]*?)<\/trk>/g;
     while ((m = reTrk.exec(text))) {
@@ -154,6 +159,11 @@
       var la = attr(m[1], 'lat'), lo = attr(m[1], 'lon');
       if (isFinite(la) && isFinite(lo)) wpts.push({ name: tagText(m[2], 'name'), lat: la, lon: lo });
     }
+
+    if (tracks.length === 0 && wpts.length === 0) {
+      console.warn('parseGPX: no tracks or waypoints found in GPX');
+    }
+
     return { tracks: tracks, waypoints: wpts };
   }
 

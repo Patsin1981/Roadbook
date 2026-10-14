@@ -127,7 +127,15 @@
   // remove stored pictures nothing refers to any more
   function gc(liveIds) {
     var live = {}; liveIds.forEach(function (id) { live[id] = 1; });
-    return keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return !live[k]; }).map(del)); }).catch(function () {});
+    return keys().then(function (ks) {
+      var toDelete = ks.filter(function (k) { return !live[k]; });
+      if (toDelete.length > 0) {
+        console.log('Photos: cleaning up ' + toDelete.length + ' unused photos');
+      }
+      return Promise.all(toDelete.map(del));
+    }).catch(function (e) {
+      console.error('Photos: gc failed', e);
+    });
   }
 
   root.RBP = { add: add, get: get, put: put, del: del, keys: keys, url: url, b64: b64, fromB64: fromB64, gc: gc, exif: exif, uid: uid };
