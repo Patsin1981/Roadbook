@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.9.2';
+  var APP_VER = '1.9.3';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1872,6 +1872,7 @@
         rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])) +
         rowH(t('set.curve'), segH('curve', [['sharp', t('curve.sharp')], ['soft', t('curve.soft')], ['wide', t('curve.wide')], ['gps', t('curve.gps')]])) +
         chkH('refMark', t('set.refMark')) + chkH('xlPhotos', t('set.xlPhotos')),
+        '<button type="button" id="sSaveDrive">' + t('set.saveDrive') + '</button>',
         t('set.docsNote')) +
 
       grpH(t('set.data'),
@@ -1922,6 +1923,7 @@
     });
     $('sBackup').onclick = function () { backupJson(false); renderSettings(); };
     $('sBackupPh').onclick = function () { backupJson(true).then(renderSettings); };
+    $('sSaveDrive').onclick = function () { saveToDrive(); };
     $('sTilesClear').onclick = function () {
       if (!window.caches) return;
       ask({ title: t('set.tilesClearTitle'), body: t('set.tilesConfirm'), ok: t('set.tilesClear'), danger: true }).then(function (ok) {
@@ -1977,6 +1979,27 @@
         } else updMsg(t('set.upToDate', { v: APP_VER }));
       }, 1500);
     }).catch(function () { updMsg(t('set.updateFail')); });
+  }
+
+  // ---------- Save to Google Drive ----------
+  function saveToDrive() {
+    backupJson(true).then(function (blob) {
+      var file = new File([blob], safeName(P.name) + '_photos.json', { type: 'application/json' });
+      if (navigator.share && navigator.share.canShare({ files: [file] })) {
+        navigator.share({
+          title: P.name,
+          files: [file]
+        }).catch(function (e) {
+          console.error('Share failed:', e);
+          toast(t('set.driveError'), 3000);
+        });
+      } else {
+        toast(t('set.driveNotSupported'), 3000);
+      }
+    }).catch(function (e) {
+      console.error('Backup failed:', e);
+      toast(t('ph.fail'), 3000);
+    });
   }
 
   // ---------- Render all ----------
