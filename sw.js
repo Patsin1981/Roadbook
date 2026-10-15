@@ -1,5 +1,5 @@
 /* Rally Roadbook service worker */
-var VER = '1.9.1';
+var VER = '1.9.2';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'i18n.js', 'symbols.js', 'overview.js', 'photos.js', 'export-xlsx.js', 'vendor/exceljs/exceljs.min.js', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png',
@@ -15,7 +15,10 @@ self.addEventListener('activate', function (e) {
     return Promise.all(ks.filter(function (k) { return k !== VER && k !== TILES; }).map(function (k) { return caches.delete(k); }));
   }).then(function () { return self.clients.claim(); }));
 });
-self.addEventListener('message', function (e) { if (e.data === 'skip') self.skipWaiting(); });
+self.addEventListener('message', function (e) { 
+  if (e.data === 'skip') self.skipWaiting();
+  if (e.data === 'claim') self.clients.claim();
+});
 
 function isTile(url) { return /tile\.openstreetmap\.org|server\.arcgisonline\.com/.test(url.hostname); }
 var trimming = false;

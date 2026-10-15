@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.9.1';
+  var APP_VER = '1.9.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1882,7 +1882,7 @@
 
       grpH(t('set.about'),
         '<div class="kv"><span>' + t('set.version') + '</span><b>' + APP_VER + '</b></div>' +
-        '<button type="button" id="sUpdate">' + t('set.checkUpdate') + '</button><p class="note" id="sUpdMsg" role="status"></p>');
+        '<button type="button" id="sUpdate">' + t('set.checkUpdate') + '</button><button type="button" id="sForceUpdate">' + t('set.forceUpdate') + '</button><p class="note" id="sUpdMsg" role="status"></p>');
 
     var body = $('setBody');
     body.querySelectorAll('[data-seg]').forEach(function (g) {
@@ -1929,6 +1929,15 @@
       });
     };
     $('sUpdate').onclick = checkForUpdate;
+    $('sForceUpdate').onclick = function () {
+      if (swReg) {
+        swReg.postMessage('skip');
+        swReg.postMessage('claim');
+        toast(t('toast.update'), 5000);
+      } else {
+        toast(t('set.noUpdate'), 3000);
+      }
+    };
     if (window.caches) caches.open('rb-tiles').then(function (c) { return c.keys(); }).then(function (k) { if ($('sTiles')) $('sTiles').textContent = t('set.tiles', { n: k.length }); }).catch(function () {});
     else $('sTiles').textContent = '';
     if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function (e) {
