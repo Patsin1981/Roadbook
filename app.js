@@ -337,7 +337,7 @@
     gSug.clearLayers();
     var st = stage(); if (!st || S.mode !== 'org') return;
     S.suggest.forEach(function (s) {
-      var c = L.circleMarker([s.lat, s.lon], { radius: 11, color: '#000', weight: 2, dashArray: '3 3', fillColor: '#FFE14D', fillOpacity: .5 }).addTo(gSug);
+      var c = L.circleMarker([s.lat, s.lon], { radius: 11, color: '#000', weight: 2, dashArray: '3 3', fillColor: '#4169E1', fillOpacity: .5 }).addTo(gSug);
       c.on('click', function () { openPoint(newPointAt(st, s.d, s.angle), true); });
     });
   }
