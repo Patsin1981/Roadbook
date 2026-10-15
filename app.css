@@ -4,11 +4,12 @@
 
 :root{
   --paper:#FFFFFF; --ink:#000000; --mute:#5C5C5C; --rule:#000000; --soft:#F2F2F2;
-  --mark:#4169E1; --red:#E74C3C; --blue:#4169E1;
+  --mark:#FFE14D; --red:#D0021B; --blue:#0050B3;
+  --nightMark:#E0B400;
   --f:"Barlow Condensed","Noto Sans Thai","Sarabun",system-ui,sans-serif;
   --t:"Noto Sans Thai","Sarabun",system-ui,sans-serif;
 }
-body.night{--paper:#000000; --ink:#FFFFFF; --mute:#A8A8A8; --rule:#FFFFFF; --soft:#1C1C1C; --mark:#5A7DC7}
+body.night{--paper:#000000; --ink:#FFFFFF; --mute:#A8A8A8; --rule:#FFFFFF; --soft:#1C1C1C; --mark:var(--nightMark)}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--t);font-size:16px;-webkit-tap-highlight-color:transparent}
 body{height:100dvh;display:grid;grid-template-rows:auto 1fr;grid-template-columns:minmax(0,1fr);width:100%;max-width:100vw;overflow:hidden}

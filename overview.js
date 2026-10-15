@@ -123,7 +123,7 @@
         var cx = Math.max(b.x + 6, Math.min(b.x + b.w - 6, it.x)), cy = it.y < b.y ? b.y : it.y > b.y + b.h ? b.y + b.h : b.y + b.h / 2;
         g.strokeStyle = '#000'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(cx, cy); g.stroke();
         g.fillStyle = '#fff'; g.beginPath(); g.arc(it.x, it.y, 7, 0, 7); g.fill(); g.lineWidth = 3; g.stroke();
-        g.fillStyle = dark ? '#000' : l.kind === 'DANGER' ? '#fff' : '#4169E1';
+        g.fillStyle = dark ? '#000' : l.kind === 'DANGER' ? '#fff' : 'var(--mark)';
         g.fillRect(b.x, b.y, b.w, b.h); g.lineWidth = 2.5; g.strokeStyle = l.kind === 'DANGER' ? '#D0021B' : '#000'; g.strokeRect(b.x, b.y, b.w, b.h);
         g.fillStyle = dark ? '#fff' : l.kind === 'DANGER' ? '#D0021B' : '#000'; g.textAlign = 'center'; g.textBaseline = 'top';
         g.font = 'bold 26px ' + font; g.fillText(l.title, b.x + b.w / 2, b.y + 4);

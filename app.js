@@ -29,7 +29,8 @@
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
     clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
-    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, curve: 'sharp', navApp: 'gmaps'
+    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, curve: 'sharp', navApp: 'gmaps',
+    theme: 'royal'
   };
   var CFG = (function () {
     var raw = null, c = {};
@@ -53,6 +54,25 @@
     return false;
   }
   function applyNight() { document.body.classList.toggle('night', S.mode !== 'org' && isNight()); }
+  
+  // ---------- Theme Colors ----------
+  var THEMES = {
+    royal: { mark: '#4169E1', red: '#E74C3C', blue: '#4169E1', nightMark: '#5A7DC7' },
+    green: { mark: '#00B894', red: '#FF7675', blue: '#0984E3', nightMark: '#00A884' },
+    speed: { mark: '#FF6F00', red: '#D32F2F', blue: '#1976D2', nightMark: '#E65100' },
+    champion: { mark: '#FFD700', red: '#DC143C', blue: '#2C3E50', nightMark: '#C0A000' }
+  };
+  function applyTheme() {
+    var theme = THEMES[CFG.theme] || THEMES.royal;
+    document.documentElement.style.setProperty('--mark', theme.mark);
+    document.documentElement.style.setProperty('--red', theme.red);
+    document.documentElement.style.setProperty('--blue', theme.blue);
+    document.documentElement.style.setProperty('--nightMark', theme.nightMark);
+    
+    // Update theme-color in meta tag
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme.mark);
+  }
   function alerts() { return (CFG.alerts || []).map(Number).filter(function (x) { return x > 0; }).sort(function (a, b) { return b - a; }); }
 
   // ---------- i18n ----------
@@ -337,7 +357,8 @@
     gSug.clearLayers();
     var st = stage(); if (!st || S.mode !== 'org') return;
     S.suggest.forEach(function (s) {
-      var c = L.circleMarker([s.lat, s.lon], { radius: 11, color: '#000', weight: 2, dashArray: '3 3', fillColor: '#4169E1', fillOpacity: .5 }).addTo(gSug);
+      var theme = THEMES[CFG.theme] || THEMES.royal;
+      var c = L.circleMarker([s.lat, s.lon], { radius: 11, color: '#000', weight: 2, dashArray: '3 3', fillColor: theme.mark, fillOpacity: .5 }).addTo(gSug);
       c.on('click', function () { openPoint(newPointAt(st, s.d, s.angle), true); });
     });
   }
@@ -1818,6 +1839,7 @@
     $('setBody').innerHTML =
       grpH(t('set.general'),
         rowH(t('file.lang'), '<div class="seg wide" id="sLang">' + langs.map(function (l) { return '<button type="button" data-lang="' + l[0] + '" aria-pressed="' + (l[0] === LANG) + '">' + l[1] + '</button>'; }).join('') + '</div>') +
+        rowH(t('set.theme'), segH('theme', [['royal', t('theme.royal')], ['green', t('theme.green')], ['speed', t('theme.speed')], ['champion', t('theme.champion')]])) +
         rowH(t('set.night'), segH('night', [['off', t('set.off')], ['on', t('set.on')], ['auto', t('set.nightAuto')]])) +
         rowH(t('set.navDec'), segH('navDec', [[2, '0.00'], [3, '0.000']])),
         t('set.decNote')) +
@@ -1920,6 +1942,7 @@
     if ((k === 'offRoute' || k === 'navAcc') && N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
     if (k === 'map') setTimeout(function () { map.invalidateSize(); }, 60);
     if (k === 'alerts') N.alerted = {};
+    if (k === 'theme') applyTheme();
     applyNight(); renderAll();
   }
   function openSettings() { renderSettings(); $('setDlg').showModal(); }
@@ -1930,7 +1953,7 @@
       var keep = { lang: CFG.lang, clockOffset: CFG.clockOffset };
       CFG = Object.assign({}, DEF, keep); saveCfg();
       setLayer(false); if (N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
-      applyNight(); renderAll(); renderSettings(); toast(t('set.resetDone'));
+      applyTheme(); applyNight(); renderAll(); renderSettings(); toast(t('set.resetDone'));
     });
   };
   function updMsg(msg) { var el = $('sUpdMsg'); if (el) el.textContent = msg; }
@@ -1957,7 +1980,7 @@
   RB.setRef(CFG.refMark !== false);
   // road shapes are redrawn with the current rules each time the app opens
   P.stages.forEach(function (st) { (st.points || []).forEach(function (p) { if (p.curve === 'gps') refreshShape(st, p); }); });
-  applyI18n(); renderAll(); fitStage();
+  applyI18n(); applyTheme(); renderAll(); fitStage();
   if (R.startT) toast(t('rec.restored'), 4000);
   else if (CFG.backup && P.stages.length && META.dirtySince && Date.now() - META.dirtySince > 86400000) {
     toast(t('backup.remind'), 15000); $('toast').onclick = function () { $('toast').hidden = true; backupJson(false); };
