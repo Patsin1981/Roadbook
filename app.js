@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.0.1';
+  var APP_VER = '2.0.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -803,8 +803,7 @@
     var st = stage(), target = D; if (!st || !D) return;
     if (D.curve !== 'gps') { D.curve = 'gps'; refreshShape(st, D, 200); if (D.curve !== 'gps') return toast(t('pt.shapeNone')); }
     $('ptOsmMsg').textContent = t('osm.loading');
-    var q = '[out:json][timeout:20];way(around:150,' + D.lat.toFixed(6) + ',' + D.lon.toFixed(6) + ')[highway];(._;>;);out body;';
-    overpass(q, function (k) { if (D === target) $('ptOsmMsg').textContent = t('osm.trying', { n: k + 1 }); }).then(function (j) {
+    osmRoads(D.lat, D.lon, 150, function (k) { if (D === target) $('ptOsmMsg').textContent = t('osm.trying', { n: k + 1 }); }).then(function (j) {
       if (D !== target) return;
       try {
         var nodes = {}; (j.elements || []).forEach(function (el) { if (el.type === 'node') nodes[el.id] = [+el.lat.toFixed(6), +el.lon.toFixed(6)]; });
@@ -822,21 +821,28 @@
       $('ptOsmMsg').textContent = !navigator.onLine ? t('osm.fail') : t('osm.busy', { e: e && e.message ? e.message : '' });
     });
   }
-  // OpenStreetMap road data. The public servers are often busy (429 / 504), so try the next one when one fails.
-  var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
-    'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
-  var overpassFirst = 0; // the server that answered last time goes first
-  function overpass(q, onTry) {
+  // OpenStreetMap road data around a point. Tried in turn until one answers:
+  // the OpenStreetMap main database (small box, read once per tap), then the Overpass servers, which are often overloaded.
+  // Every source returns the same shape: { elements: [node {id,lat,lon}, way {nodes,tags}] }.
+  var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  var osmFirst = 0; // the source that answered last time goes first
+  function osmRoads(lat, lon, r, onTry) {
+    var dy = r / 111195, dx = r / (111195 * Math.cos(lat * Math.PI / 180)), f = function (v) { return v.toFixed(6); };
+    var q = '[out:json][timeout:15];way[highway](around:' + r + ',' + f(lat) + ',' + f(lon) + ');(._;>;);out body;';
+    var src = [{ url: 'https://api.openstreetmap.org/api/0.6/map.json?bbox=' + [f(lon - dx), f(lat - dy), f(lon + dx), f(lat + dy)].join(','), name: 'osm' }]
+      .concat(OVERPASS.map(function (u) { return { url: u, post: 'data=' + encodeURIComponent(q), name: u.split('/')[2].split('.').slice(-2, -1)[0] }; }));
     var errs = [];
     function attempt(k) {
-      if (k >= OVERPASS.length) return Promise.reject(new Error(errs.join(', ')));
-      var i = (overpassFirst + k) % OVERPASS.length;
+      if (k >= src.length) return Promise.reject(new Error(errs.join(', ')));
+      var i = (osmFirst + k) % src.length, s = src[i];
       if (k && onTry) onTry(k);
-      var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 25000);
-      return fetch(OVERPASS[i], { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl ? ctrl.signal : undefined })
-        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-        .then(function (j) { clearTimeout(to); if (!j || !j.elements) throw new Error('data'); overpassFirst = i; return j; })
-        .catch(function (e) { clearTimeout(to); errs.push(e && e.name === 'AbortError' ? 'timeout' : (e && e.message) || 'net'); return attempt(k + 1); });
+      var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 15000);
+      var opt = s.post ? { method: 'POST', body: s.post, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } : {};
+      if (ctrl) opt.signal = ctrl.signal;
+      return fetch(s.url, opt)
+        .then(function (res) { if (!res.ok) throw new Error(String(res.status)); return res.json(); })
+        .then(function (j) { clearTimeout(to); if (!j || !j.elements) throw new Error('data'); osmFirst = i; return j; })
+        .catch(function (e) { clearTimeout(to); errs.push(s.name + ' ' + (e && e.name === 'AbortError' ? 'timeout' : (e && e.message) || 'net')); return attempt(k + 1); });
     }
     return attempt(0);
   }
