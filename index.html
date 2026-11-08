@@ -87,6 +87,7 @@
     <div id="map"></div>
     <div class="fabs">
       <button class="fab" id="fLayer"></button>
+      <button class="fab" id="fImgOff" hidden data-i18n="fab.imgOff"></button>
       <button class="fab org-only" id="fAdd" aria-pressed="false" data-i18n="fab.add"></button>
       <button class="fab org-only" id="fDraw" data-i18n="fab.draw"></button>
       <button class="fab org-only" id="fFilter" aria-pressed="false" data-i18n="fab.ctrlOnly"></button>
@@ -95,6 +96,10 @@
       <button class="fab org-only" id="fLocate" data-i18n="fab.locate"></button>
     </div>
     <div class="hint" id="addHint" hidden data-i18n="hint.add"></div>
+    <div class="drawbar" id="toolBar" hidden>
+      <div class="drawinfo"><b id="toolTitle"></b><span id="toolMsg"></span></div>
+      <div class="drawbtns" id="toolBtns"></div>
+    </div>
     <div class="drawbar" id="drawBar" hidden>
       <div class="drawinfo"><b id="drawKm">0.00 km</b><span id="drawMsg" data-i18n="draw.hint"></span></div>
       <div class="drawbtns">
@@ -137,7 +142,7 @@
       </div>
       <div class="group">
         <h3 data-i18n="file.import"></h3>
-        <label class="btn"><span data-i18n="file.importGpx"></span><input type="file" id="inGpx" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden></label>
+        <label class="btn"><span data-i18n="file.importGpx"></span><input type="file" id="inGpx" accept=".gpx,.kml,.kmz,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/xml,text/xml" multiple hidden></label>
         <label class="btn"><span data-i18n="file.openJson"></span><input type="file" id="inJson" accept=".json,application/json" hidden></label>
         <label class="btn"><span data-i18n="ph.import"></span><input type="file" id="inPhGps" accept="image/jpeg,image/*" multiple hidden></label>
         <p class="note" data-i18n="file.importNote"></p>
@@ -287,7 +292,7 @@
     <h3 id="askTitle"></h3>
     <p id="askBody"></p>
     <label class="field" id="askField" hidden><span id="askLbl"></span><input id="askIn" autocomplete="off"></label>
-    <div class="dlg-foot"><button type="button" id="askNo"></button><span class="spacer"></span><button type="button" id="askOk" class="primary"></button></div>
+    <div class="dlg-foot"><button type="button" id="askNo"></button><span class="spacer"></span><button type="button" id="askAlt" hidden></button><button type="button" id="askOk" class="primary"></button></div>
   </form>
 </dialog>
 
@@ -313,7 +318,7 @@
   </form>
 </dialog>
 
-<input type="file" id="inAny" accept=".gpx,.json,application/gpx+xml,application/json,application/xml,text/xml" multiple hidden>
+<input type="file" id="inAny" accept=".gpx,.kml,.kmz,.json,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/json,application/xml,text/xml" multiple hidden>
 <div id="toast" role="status" hidden></div>
 
 <script src="vendor/leaflet/leaflet.js"></script>

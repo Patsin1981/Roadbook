@@ -38,6 +38,8 @@ main{display:grid;min-height:0;min-width:0;overflow:hidden;grid-template-columns
 body.mode-org main{grid-template-rows:55% 45%;grid-template-areas:"map" "panel"}
 body.mode-nav main,body.mode-rec main{grid-template-rows:auto 1fr;grid-template-areas:"dash" "map"}
 body.mode-nav.nomap main{grid-template-rows:1fr}
+body.mapfull main{grid-template-rows:1fr !important}
+body.mapfull #panel{display:none}
 body.mode-org #dash,body.mode-org #rec,body.mode-nav #panel,body.mode-nav #rec,body.mode-rec #panel,body.mode-rec #dash,body.mode-nav.nomap #mapWrap{display:none}
 body.mode-org .nav-only,body.mode-org .rec-only,body.mode-rec .org-only,body.mode-nav .org-only{display:none}
 .dash{grid-area:dash;overflow:auto}
@@ -194,6 +196,13 @@ body.mode-nav.nomap #dash .rb-box{min-height:120px}
 .seg.wide button{flex:1}
 .wp{width:26px;height:26px;border-radius:50%;background:#fff;color:#000;border:2.5px solid #0050B3;font:700 13px/21px var(--f);text-align:center}
 .wp.first{background:#000;color:#fff;border-color:#000}
+#toolBar .drawinfo{flex-direction:column;gap:2px;align-items:flex-start}
+#toolBar .drawinfo b{font-size:17px}
+.drawbtns>button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.tarr{background:none;border:0;pointer-events:none}
+.vtx{width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #E8590C;box-sizing:border-box}
+.vtx.sel{background:#E8590C;border-color:#000;transform:scale(1.35)}
+.vtx.end{border-color:#000}
 
 /* Recce */
 .marks{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
@@ -350,4 +359,4 @@ body.night #stageSel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .stk-ctl button{min-height:38px}
 .stkpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:5px;max-height:260px;overflow:auto;border:1.5px solid var(--ink);padding:6px}
 .stkpick button{min-height:58px;padding:3px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;line-height:1.1;background:#fff;color:#000}
-.stkpick .lbl-board{background:var(--mark);border:1.5px solid #000;font:700 12px Arial,sans-serif;padding:2px 5px}
+.stkpick .lbl-board{background:#FFD400;border:1.5px solid #000;font:700 12px Arial,sans-serif;padding:2px 5px}

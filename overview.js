@@ -69,13 +69,15 @@
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     var g = cv.getContext('2d');
     g.fillStyle = '#e8e8e8'; g.fillRect(0, 0, W, H);
-    var tx0 = Math.floor(ox / TILE), ty0 = Math.floor(oy / TILE), tx1 = Math.floor((ox + W) / TILE), ty1 = Math.floor((oy + H) / TILE);
+    var tx0 = Math.floor(ox / TILE) - 1, ty0 = Math.floor(oy / TILE) - 1, tx1 = Math.floor((ox + W) / TILE) + 1, ty1 = Math.floor((oy + H) / TILE) + 1;
     var jobs = [], max = Math.pow(2, z);
+    // satellite pictures that sit a few metres off in this area are moved to line up with the route (o.shift in metres east / north)
+    var ppm = Math.pow(2, z) / (156543.03392 * Math.cos((n + s) / 2 * Math.PI / 180)), shx = o.shift ? o.shift.e * ppm : 0, shy = o.shift ? -o.shift.n * ppm : 0;
     if (!o.noTiles) for (var tx = tx0; tx <= tx1; tx++) for (var ty = ty0; ty <= ty1; ty++) {
       if (ty < 0 || ty >= max) continue;
       (function (tx, ty) {
         var url = L.url.replace('{z}', z).replace('{x}', ((tx % max) + max) % max).replace('{y}', ty);
-        jobs.push(loadTile(url).then(function (im) { if (im) g.drawImage(im, tx * TILE - ox, ty * TILE - oy, TILE, TILE); return !!im; }));
+        jobs.push(loadTile(url).then(function (im) { if (im) g.drawImage(im, tx * TILE - ox + shx, ty * TILE - oy + shy, TILE, TILE); return !!im; }));
       })(tx, ty);
     }
     return Promise.all(jobs).then(function (res) {
@@ -123,7 +125,7 @@
         var cx = Math.max(b.x + 6, Math.min(b.x + b.w - 6, it.x)), cy = it.y < b.y ? b.y : it.y > b.y + b.h ? b.y + b.h : b.y + b.h / 2;
         g.strokeStyle = '#000'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(it.x, it.y); g.lineTo(cx, cy); g.stroke();
         g.fillStyle = '#fff'; g.beginPath(); g.arc(it.x, it.y, 7, 0, 7); g.fill(); g.lineWidth = 3; g.stroke();
-        g.fillStyle = dark ? '#000' : l.kind === 'DANGER' ? '#fff' : 'var(--mark)';
+        g.fillStyle = dark ? '#000' : l.kind === 'DANGER' ? '#fff' : '#FFE14D';
         g.fillRect(b.x, b.y, b.w, b.h); g.lineWidth = 2.5; g.strokeStyle = l.kind === 'DANGER' ? '#D0021B' : '#000'; g.strokeRect(b.x, b.y, b.w, b.h);
         g.fillStyle = dark ? '#fff' : l.kind === 'DANGER' ? '#D0021B' : '#000'; g.textAlign = 'center'; g.textBaseline = 'top';
         g.font = 'bold 26px ' + font; g.fillText(l.title, b.x + b.w / 2, b.y + 4);

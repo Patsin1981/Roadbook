@@ -134,6 +134,25 @@
     }
     return pts;
   }
+  // KML from Google My Maps / Google Earth: LineString and gx:Track → tracks, Point → waypoints. Same shape as parseGPX.
+  function parseKML(text) {
+    var tracks = [], wpts = [], m;
+    var coords = function (str) {
+      return String(str).trim().split(/\s+/).map(function (c) { var v = c.split(','); return [+v[1], +v[0]]; }).filter(function (p) { return isFinite(p[0]) && isFinite(p[1]); });
+    };
+    var unesc = function (x) { return String(x || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim(); };
+    var rePm = /<Placemark\b[^>]*>([\s\S]*?)<\/Placemark>/g;
+    while ((m = rePm.exec(text))) {
+      var body = m[1], nm = /<name>([\s\S]*?)<\/name>/.exec(body), name = nm ? unesc(nm[1]) : '', mm;
+      var reLs = /<LineString\b[^>]*>[\s\S]*?<coordinates>([\s\S]*?)<\/coordinates>/g, k = 0;
+      while ((mm = reLs.exec(body))) { var pts = coords(mm[1]); if (pts.length > 1) tracks.push({ name: name + (k++ ? ' ' + (k) : ''), pts: pts }); }
+      var gx = body.match(/<gx:coord>([^<]+)<\/gx:coord>/g);
+      if (gx && gx.length > 1) tracks.push({ name: name, pts: gx.map(function (c) { var v = c.replace(/<[^>]+>/g, '').trim().split(/\s+/); return [+v[1], +v[0]]; }).filter(function (p) { return isFinite(p[0]) && isFinite(p[1]); }) });
+      var pt = /<Point\b[^>]*>[\s\S]*?<coordinates>([\s\S]*?)<\/coordinates>/.exec(body);
+      if (pt) { var q = coords(pt[1])[0]; if (q) wpts.push({ name: name, lat: q[0], lon: q[1] }); }
+    }
+    return { tracks: tracks, waypoints: wpts };
+  }
   // Returns {tracks:[{name, pts}], waypoints:[{name, lat, lon}]}
   function parseGPX(text) {
     if (!text || typeof text !== 'string') {
@@ -303,7 +322,7 @@
       if (k.id === 'label') {
         var txt = esc(k.t || ''); bh2 = z * 0.5; bw2 = Math.max(14, (k.t || '').length * bh2 * 0.47 + 5);
         var lx0 = Math.max(-49 + bw2 / 2, Math.min(49 - bw2 / 2, k.x)); // a name board always stays inside the box
-        s += '<g' + da + ' transform="translate(' + f1(lx0) + ',' + f1(k.y) + ')"><rect x="' + f1(-bw2 / 2) + '" y="' + f1(-bh2 / 2) + '" width="' + f1(bw2) + '" height="' + f1(bh2) + '" fill="var(--mark)" stroke="#000" stroke-width="0.8"/>' +
+        s += '<g' + da + ' transform="translate(' + f1(lx0) + ',' + f1(k.y) + ')"><rect x="' + f1(-bw2 / 2) + '" y="' + f1(-bh2 / 2) + '" width="' + f1(bw2) + '" height="' + f1(bh2) + '" fill="#FFD400" stroke="#000" stroke-width="0.8"/>' +
           '<text x="0" y="' + f1(bh2 * 0.26) + '" font-family="Arial,sans-serif" font-weight="700" font-size="' + f1(bh2 * 0.72) + '" textLength="' + f1(bw2 - 4) + '" lengthAdjust="spacingAndGlyphs" text-anchor="middle" fill="#000">' + txt + '</text></g>';
       } else if (SYM && SYM[k.id]) {
         s += '<g' + da + ' transform="translate(' + f1(k.x - z / 2) + ',' + f1(k.y - z / 2) + ') scale(' + (z / 100).toFixed(3) + ')">' + SYM[k.id].svg + '</g>';
@@ -535,7 +554,7 @@
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
-    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, roadShape: roadShape, shapeXY: shapeXY
+    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, roadShape: roadShape, shapeXY: shapeXY, parseKML: parseKML
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);

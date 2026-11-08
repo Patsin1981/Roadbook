@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '1.9.3';
+  var APP_VER = '2.0.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -135,6 +135,7 @@
     if (o.input != null) { $('askLbl').textContent = o.label || ''; $('askIn').value = o.input; }
     $('askOk').textContent = o.ok || t('common.ok'); $('askNo').textContent = o.cancel || t('common.cancel');
     $('askOk').className = o.danger ? 'danger-fill' : 'primary';
+    $('askAlt').hidden = !o.alt; $('askAlt').textContent = o.alt || '';
     return new Promise(function (resolve) {
       askState = { resolve: resolve, input: o.input != null };
       $('askDlg').showModal();
@@ -144,6 +145,7 @@
   function askDone(v) { var st = askState; askState = null; if ($('askDlg').open) $('askDlg').close(); if (st) st.resolve(v); }
   $('askOk').onclick = function () { askDone(askState && askState.input ? $('askIn').value : true); };
   $('askNo').onclick = function () { askDone(null); };
+  $('askAlt').onclick = function () { askDone('alt'); };
   $('askIn').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); $('askOk').click(); } };
   $('askDlg').addEventListener('cancel', function (e) { e.preventDefault(); askDone(null); });
 
@@ -184,7 +186,7 @@
   var map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([13.75, 100.5], 6);
   var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' }).addTo(map);
   var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18, crossOrigin: 'anonymous', attribution: 'Imagery &copy; Esri' });
-  var gTracks = L.layerGroup().addTo(map), gPins = L.layerGroup().addTo(map), gSug = L.layerGroup().addTo(map), gNav = L.layerGroup().addTo(map), gRec = L.layerGroup().addTo(map), gDraw = L.layerGroup().addTo(map);
+  var gTracks = L.layerGroup().addTo(map), gPins = L.layerGroup().addTo(map), gSug = L.layerGroup().addTo(map), gNav = L.layerGroup().addTo(map), gRec = L.layerGroup().addTo(map), gDraw = L.layerGroup().addTo(map), gArrows = L.layerGroup().addTo(map), gEdit = L.layerGroup().addTo(map);
   var draftMarker = null;
   function dot() { return L.divIcon({ className: '', html: '<div class="gpsdot"></div>', iconSize: [20, 20] }); }
 
@@ -193,6 +195,8 @@
     S.sat = on;
     if (on) { map.removeLayer(osm); sat.addTo(map); } else { map.removeLayer(sat); osm.addTo(map); }
     $('fLayer').textContent = on ? t('fab.map') : t('fab.sat');
+    $('fImgOff').hidden = !on;
+    applyImgOff();
   }
   $('fLayer').onclick = function () { setLayer(!S.sat); };
   $('fFit').onclick = fitStage;
@@ -215,6 +219,8 @@
   map.on('click', function (e) {
     if (S.mode !== 'org') return;
     if (S.draw) return drawAdd(e.latlng.lat, e.latlng.lng);
+    if (S.edit) return editTap(e.latlng);
+    if (S.imgOff) return;
     if (!S.addMode) return;
     var st = stage(); if (!st) return toast(t('err.needGpx'));
     var r = RB.project(st.track, cumOf(st), e.latlng.lat, e.latlng.lng);
@@ -249,7 +255,11 @@
       var nx = P.stages[i + 1];
       if (nx && st.track.length && nx.track.length) {
         var a = st.track[st.track.length - 1], b = nx.track[0], gap = RB.hav(a, b);
-        if (gap > 20 && gap < 50000) L.polyline([a, b], { color: '#555', weight: 2, dashArray: '4 6', opacity: .8, interactive: false }).addTo(gTracks);
+        if (gap > 20 && gap < 50000) {
+          L.polyline([a, b], { color: '#555', weight: 2, dashArray: '4 6', opacity: .8, interactive: false }).addTo(gTracks);
+          // wide invisible line on top so the gap is easy to tap: offers to join the two legs
+          if (S.mode === 'org' && !S.draw && !S.edit) L.polyline([a, b], { color: '#000', weight: 22, opacity: 0.01 }).on('click', function (e) { L.DomEvent.stop(e); joinGap(i); }).addTo(gTracks);
+        }
       }
       if (st.id === S.stageId) return;
       L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
@@ -260,7 +270,24 @@
       L.polyline(st.track, { color: '#fff', weight: 10, opacity: .95, interactive: false }).addTo(gTracks);
       L.polyline(st.track, { color: stageColor(st), weight: 6, interactive: false }).addTo(gTracks);
     }
+    drawArrows();
   }
+  // small arrows along the selected route every ~90 px, so it is clear which way it runs
+  function drawArrows() {
+    gArrows.clearLayers();
+    var st = stage(); if (!st || st.track.length < 2) return;
+    var z = map.getZoom(), c = map.getCenter(), mpp = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
+    var cum = cumOf(st), L0 = cum[cum.length - 1], step = Math.max(30, 90 * mpp);
+    if (L0 / step > 300) step = L0 / 300;
+    var view = map.getBounds().pad(0.2), html = '<svg viewBox="0 0 20 20" width="18" height="18"><path d="M10 2 L17 16 L10 12 L3 16 Z" fill="#fff" stroke="#000" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+    for (var d = step / 2; d < L0; d += step) {
+      var p = RB.pointAt(st.track, cum, d); if (!view.contains(p)) continue;
+      var a = RB.pointAt(st.track, cum, Math.max(0, d - 6)), b = RB.pointAt(st.track, cum, Math.min(L0, d + 6));
+      var brg = RB.bearing(a, b);
+      L.marker(p, { interactive: false, keyboard: false, icon: L.divIcon({ className: 'tarr', html: '<div style="transform:rotate(' + brg.toFixed(0) + 'deg)">' + html + '</div>', iconSize: [18, 18], iconAnchor: [9, 9] }) }).addTo(gArrows);
+    }
+  }
+  map.on('zoomend moveend', function () { drawArrows(); if (S.edit) editRender(); applyImgOff(); });
   // ---------- Map pins with label decluttering ----------
   // Control labels are laid out in screen space each time the zoom changes:
   // 1) full label (code + km + time) placed where it doesn't overlap, with a leader line to the point
@@ -315,7 +342,7 @@
   }
   function drawPins() {
     gPins.clearLayers();
-    var st = stage(); if (!st || S.draw) return;
+    var st = stage(); if (!st || S.draw || S.edit) return;
     var all = pts(st), ctrls = all.filter(RB.isControl), z = map.getZoom();
     var items = layoutControls(st, ctrls), blocked = [];
     items.forEach(function (it) {
@@ -381,7 +408,7 @@
   // one picker for both kinds of file: route files (.gpx) and backup files (.json)
   $('inAny').onchange = function () {
     var list = Array.prototype.slice.call(this.files || []); this.value = '';
-    var backups = list.filter(function (f) { return /\.json$/i.test(f.name); }), gpx = list.filter(function (f) { return !/\.json$/i.test(f.name); });
+    var backups = list.filter(function (f) { return /\.json$/i.test(f.name); }), gpx = list.filter(function (f) { return !/\.json$/i.test(f.name); }); // gpx, kml or kmz
     if (gpx.length) importGpxFiles(gpx);
     if (backups.length) {
       var fr = new FileReader();
@@ -390,6 +417,7 @@
     }
   };
   function selectStage(id, fit) {
+    if (S.toolCancel && id !== S.stageId) S.toolCancel();
     S.stageId = id; rememberStage(); S.sel = null; S.suggest = [];
     navResetMatch(); renderAll(); if (fit) fitStage();
   }
@@ -399,6 +427,7 @@
       if (S.draw.wps.length > 1) { drawCancel(function () { setMode(m); }); return; }
       drawEnd();
     }
+    if (m !== 'org' && S.toolCancel) S.toolCancel(); // leaving the plan screen closes a line tool without keeping it
     S.mode = m; setAdd(false);
     ['org', 'rec', 'nav'].forEach(function (x) { document.body.classList.toggle('mode-' + x, x === m); });
     document.querySelectorAll('.mode button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.mode === m); });
@@ -445,7 +474,7 @@
     var el = $('tab-rb'), st = stage();
     if (!st) {
       el.innerHTML = '<div class="empty"><b>' + t('rb.emptyTitle') + '</b>' + t('rb.emptyBody') +
-        '<label class="btn">' + t('file.importGpx') + '<input type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" multiple hidden id="inGpx2"></label>' +
+        '<label class="btn">' + t('file.importGpx') + '<input type="file" accept=".gpx,.kml,.kmz,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/xml,text/xml" multiple hidden id="inGpx2"></label>' +
         '<button id="eRec">' + t('rb.startRec') + '</button><button id="eDraw">' + t('rb.startDraw') + '</button></div>';
       $('inGpx2').onchange = function () { importGpxFiles(this.files); this.value = ''; };
       $('eRec').onclick = function () { setMode('rec'); };
@@ -522,6 +551,8 @@
       }).join('') + '</div>' +
       '<div class="row2"><label class="field">Section<input id="sSection" value="' + RB.esc(st.section || '') + '"></label><label class="field">Leg<input id="sLeg" value="' + RB.esc(st.leg || '') + '"></label></div>' +
       '<button type="button" id="sGo" class="go-btn">' + t('go.start') + '</button>' +
+      '<div class="row2"><button type="button" id="sEdit">' + t('tool.edit') + '</button><button type="button" id="sSnap">' + t('tool.snap') + '</button></div>' +
+      '<div class="row2"><button type="button" id="sReverse">' + t('tool.reverse') + '</button>' + (st.trackOrig ? '<button type="button" id="sRestore">' + t('tool.restore') + '</button>' : '<span></span>') + '</div>' +
       '<div class="kv"><span>' + t('stage.lenGps') + '</span><b>' + (L0 / 1000).toFixed(3) + ' km</b><span>' + t('stage.lenAdj') + '</span><b>' + (L0 * f / 1000).toFixed(3) + ' km</b><span>' + t('stage.nPoints') + '</span><b>' + st.points.length + '</b></div></div>' +
 
       '<div class="group"><h3>' + t('stage.calTitle') + '</h3>' +
@@ -551,6 +582,12 @@
     $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
     $('sOverview').onclick = exportOverviewPng;
     $('sGo').onclick = function () { var a = stageStart(st); openDirections(a[0], a[1]); };
+    $('sEdit').onclick = function () { editStart(st); };
+    $('sSnap').onclick = function () { snapStage(st); };
+    $('sReverse').onclick = function () { reverseStage(st); };
+    if ($('sRestore')) $('sRestore').onclick = function () {
+      ask({ title: t('tool.restoreTitle'), body: t('tool.restoreBody'), ok: t('tool.restore') }).then(function (ok) { if (ok) { var o = st.trackOrig; delete st.trackOrig; setTrack(st, o, false); toast(t('tool.restored')); } });
+    };
     $('sLeg').onchange = function () { st.leg = this.value.trim(); save(); };
     el.querySelectorAll('[data-kind]').forEach(function (b) { b.onclick = function () { st.kind = b.dataset.kind; save(); drawTracks(); renderStagePanel(); }; });
     $('sSplit').onclick = function () { autoSplit(st); };
@@ -959,12 +996,18 @@
     S.draw = { wps: [], segs: [], snap: CFG.drawSnap !== false, warned: false };
     $('drawBar').hidden = false; $('fDraw').hidden = true; $('fAdd').hidden = true; $('fFilter').hidden = true;
     gPins.clearLayers(); map.getContainer().style.cursor = 'crosshair';
-    drawRender();
+    mapFull(true); drawRender();
+  }
+  // drawing and line tools take the whole screen for the map; the panel comes back when they close
+  function mapFull(on) {
+    if (document.body.classList.contains('mapfull') === on) return;
+    var c = map.getCenter(); document.body.classList.toggle('mapfull', on);
+    map.invalidateSize({ pan: false }); map.panTo(c, { animate: false });
   }
   function drawEnd() {
     S.draw = null; gDraw.clearLayers();
     $('drawBar').hidden = true; $('fDraw').hidden = false; $('fAdd').hidden = false; $('fFilter').hidden = false;
-    map.getContainer().style.cursor = ''; drawPins();
+    map.getContainer().style.cursor = ''; mapFull(false); drawPins();
   }
   function drawCancel(then) {
     var fin = function () { drawEnd(); if (typeof then === 'function') then(); };
@@ -975,16 +1018,26 @@
   $('dCancel').onclick = function () { drawCancel(); };
   $('dSnap').onclick = function () { if (S.draw) { S.draw.snap = true; drawRender(); } };
   $('dLine').onclick = function () { if (S.draw) { S.draw.snap = false; drawRender(); } };
-  $('dUndo').onclick = function () { var d = S.draw; if (!d || !d.wps.length) return; d.wps.pop(); d.segs.pop(); drawRender(); };
+  $('dUndo').onclick = function () {
+    var d = S.draw; if (!d || !d.wps.length) return;
+    if (d.join) {
+      if (d.wps.length <= 2) return;
+      d.wps.splice(d.wps.length - 2, 1); d.segs = d.wps.slice(1).map(function () { return { pts: null }; });
+      d.wps.forEach(function (w, i) { if (i) routeSeg(i - 1); }); return drawRender();
+    }
+    d.wps.pop(); d.segs.pop(); drawRender();
+  };
   $('dDone').onclick = function () {
     var d = S.draw; if (!d) return;
     if (d.segs.some(function (s) { return s.busy; })) return toast(t('draw.wait'));
     var track = drawTrack();
     if (track.length < 2) return toast(t('err.drawShort'));
     var len = 0; for (var k = 1; k < track.length; k++) len += RB.hav(track[k - 1], track[k]);
-    ask({ title: t('draw.saveTitle'), body: t('draw.saveBody', { km: (len / 1000).toFixed(3), n: d.wps.length }), input: nextStageName(), label: t('prompt.stageName'), ok: t('fin.create') }).then(function (name) {
+    var join = d.join, defName = join ? 'Free run ' + (P.stages.filter(function (x) { return kindOf(x) === 'liaison'; }).length + 1) : nextStageName();
+    ask({ title: t('draw.saveTitle'), body: t('draw.saveBody', { km: (len / 1000).toFixed(3), n: d.wps.length }), input: defName, label: t('prompt.stageName'), ok: t('fin.create') }).then(function (name) {
       if (name == null || !S.draw) return;
-      var st = addStage(name.trim() || nextStageName(), RB.cleanTrack(track, 1));
+      var st = addStage(name.trim() || defName, RB.cleanTrack(track, 1));
+      if (join) { st.kind = 'liaison'; P.stages.splice(P.stages.indexOf(st), 1); P.stages.splice(join.after + 1, 0, st); save(); }
       drawEnd(); selectStage(st.id, true); toast(t('toast.stageCreated', { name: st.name, km: (lenOf(st) / 1000).toFixed(3) }), 3500);
     });
   };
@@ -1025,9 +1078,30 @@
       .then(function () { clearTimeout(to); if (S.draw && seg.token === token) { seg.busy = false; drawRender(); } });
   }
   function drawAdd(lat, lon) {
-    var d = S.draw; d.wps.push({ lat: lat, lon: lon, snap: d.snap });
+    var d = S.draw;
+    if (d.join) {
+      // joining two legs: both ends stay put, a tap adds a point the road must pass through (just before the far end)
+      d.wps.splice(d.wps.length - 1, 0, { lat: lat, lon: lon, snap: d.snap, via: true });
+      d.segs = d.wps.slice(1).map(function () { return { pts: null }; });
+      d.wps.forEach(function (w, i) { if (i) routeSeg(i - 1); });
+      return drawRender();
+    }
+    d.wps.push({ lat: lat, lon: lon, snap: d.snap });
     if (d.wps.length > 1) { d.segs.push({ pts: null }); routeSeg(d.wps.length - 2); }
     drawRender();
+  }
+  // tap on the dashed gap between two legs → a Free run leg that joins them, by road or straight
+  function joinGap(i) {
+    var A = P.stages[i], B = P.stages[i + 1]; if (!A || !B) return;
+    var a = A.track[A.track.length - 1], b = B.track[0];
+    ask({ title: t('join.title', { a: A.name, b: B.name }), body: t('join.body', { km: (RB.hav(a, b) / 1000).toFixed(2) }), ok: t('join.road'), alt: t('join.line') }).then(function (r) {
+      if (!r) return;
+      drawStart();
+      var d = S.draw; d.snap = r === true; d.join = { after: i };
+      d.wps = [{ lat: a[0], lon: a[1], snap: d.snap, fixed: true }, { lat: b[0], lon: b[1], snap: d.snap, fixed: true }];
+      d.segs = [{ pts: null }]; routeSeg(0); drawRender();
+      toast(t('join.hint'), 5000);
+    });
   }
   function drawRender() {
     var d = S.draw; if (!d) return;
@@ -1040,7 +1114,8 @@
       L.polyline(s.pts, { color: s.failed || s.far ? '#D0021B' : '#0050B3', weight: 4, dashArray: b.snap && !s.failed ? null : '8 6', opacity: s.busy ? .5 : 1, interactive: false }).addTo(gDraw);
     });
     d.wps.forEach(function (w, i) {
-      var m = L.marker([w.lat, w.lon], { draggable: true, icon: L.divIcon({ className: '', html: '<div class="wp' + (i === 0 ? ' first' : '') + '">' + (i === 0 ? 'S' : i) + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(gDraw);
+      var lbl = d.join ? (i === 0 ? 'A' : i === d.wps.length - 1 ? 'B' : i) : (i === 0 ? 'S' : i);
+      var m = L.marker([w.lat, w.lon], { draggable: !w.fixed, icon: L.divIcon({ className: '', html: '<div class="wp' + (i === 0 || w.fixed ? ' first' : '') + '">' + lbl + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(gDraw);
       m.on('dragend', function () {
         var ll = m.getLatLng(); w.lat = ll.lat; w.lon = ll.lng;
         if (i > 0) routeSeg(i - 1); if (i < d.segs.length) routeSeg(i);
@@ -1054,6 +1129,183 @@
     $('drawMsg').textContent = d.segs.some(function (s) { return s.busy; }) ? t('draw.routing') : bad ? t('draw.checkRed') : d.wps.length ? t('draw.hintMore') : t('draw.hint');
   }
 
+  // ---------- Route tools: edit by hand, snap to roads, reverse, satellite picture alignment ----------
+  // New track for a leg: every box keeps its place on the ground and gets its km from the new line.
+  function setTrack(st, track, keepOrig) {
+    if (keepOrig && !st.trackOrig) st.trackOrig = st.track;
+    st.track = track; var cum = cumOf(st);
+    st.points.forEach(function (p) { var r = RB.project(track, cum, p.lat, p.lon); if (r) { p.d = r.d; p.lat = r.lat; p.lon = r.lon; } refreshShape(st, p); });
+    save(); navResetMatch(); renderAll();
+  }
+  function toolBar(title, msg, btns) {
+    $('toolBar').hidden = !title; S.toolCancel = null; if (!title) return;
+    btns.forEach(function (b) { if (b.label === t('common.cancel')) S.toolCancel = b.fn; });
+    $('toolTitle').textContent = title; $('toolMsg').textContent = msg || '';
+    $('toolBtns').innerHTML = btns.map(function (b, i) { return '<button type="button" data-tb="' + i + '"' + (b.cls ? ' class="' + b.cls + '"' : '') + (b.pressed != null ? ' aria-pressed="' + b.pressed + '"' : '') + '>' + b.label + '</button>'; }).join('');
+    $('toolBtns').onclick = function (e) { var x = e.target.closest('[data-tb]'); if (x) btns[+x.dataset.tb].fn(); };
+  }
+  function toolMode(on) {
+    ['fDraw', 'fAdd', 'fFilter'].forEach(function (id) { $(id).hidden = on; });
+    mapFull(on);
+    if (on) { setAdd(false); S.suggest = []; drawSuggest(); }
+  }
+
+  // reverse: the end becomes the start; START and FINISH swap, km of every box counted the other way
+  function reverseStage(st) {
+    var turns = st.points.filter(function (p) { return !RB.isControl(p) && p.angle; }).length;
+    ask({ title: t('tool.revTitle'), body: t('tool.revBody') + (turns ? '\n\n' + t('tool.revTurns', { n: turns }) : ''), ok: t('tool.reverse') }).then(function (ok) {
+      if (!ok) return;
+      var L0 = lenOf(st);
+      st.track = st.track.slice().reverse();
+      if (st.trackOrig) st.trackOrig = st.trackOrig.slice().reverse();
+      st.points.forEach(function (p) {
+        p.d = Math.max(0, L0 - p.d);
+        if (p.type === 'START' || p.type === 'FINISH') {
+          var to = p.type === 'START' ? 'FINISH' : 'START';
+          if (!p.code || p.code === p.type) p.code = to;
+          p.type = to; p.angle = to === 'START' ? null : 0;
+        }
+        refreshShape(st, p);
+      });
+      save(); navResetMatch(); renderAll(); toast(t('tool.reversed'), 4000);
+    });
+  }
+
+  // snap to roads (OpenStreetMap map matching). Roads missing from the map keep the recorded line.
+  var OSRM_MATCH = 'https://router.project-osrm.org/match/v1/driving/';
+  function snapStage(st) {
+    var cum = cumOf(st), L0 = lenOf(st), step = 15, samp = [];
+    for (var d = 0; d < L0; d += step) samp.push(RB.pointAt(st.track, cum, d));
+    samp.push(st.track[st.track.length - 1]);
+    var chunks = [], CH = 90;
+    for (var i = 0; i < samp.length - 1; i += CH - 1) chunks.push(samp.slice(i, i + CH));
+    toast(t('tool.snapping'), 30000);
+    var outPts = [], matched = 0;
+    var run = chunks.reduce(function (pr, ch) {
+      return pr.then(function () {
+        var url = OSRM_MATCH + ch.map(function (p) { return p[1].toFixed(6) + ',' + p[0].toFixed(6); }).join(';') +
+          '?geometries=geojson&overview=full&gaps=ignore&tidy=true&radiuses=' + ch.map(function () { return 25; }).join(';');
+        return fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
+          var tps = j.tracepoints || [], ms = j.matchings || [], used = {};
+          // walk the samples in order: a matched sample brings its whole matched road once, an unmatched one stays as recorded
+          var mi = ch.map(function (p, k) { return tps[k] ? tps[k].matchings_index : -1; });
+          var inside = function (k) { // an unmatched sample inside one matched stretch is covered by that road already
+            var a = k, b = k; while (a >= 0 && mi[a] < 0) a--; while (b < mi.length && mi[b] < 0) b++;
+            return a >= 0 && b < mi.length && mi[a] === mi[b];
+          };
+          ch.forEach(function (p, k) {
+            var tp = tps[k];
+            if (!tp) { if (!inside(k)) outPts.push(p); return; }
+            matched++;
+            if (used[tp.matchings_index]) return;
+            used[tp.matchings_index] = 1;
+            (ms[tp.matchings_index].geometry.coordinates || []).forEach(function (c) { outPts.push([c[1], c[0]]); });
+          });
+        });
+      });
+    }, Promise.resolve());
+    run.then(function () {
+      $('toast').hidden = true;
+      var tr = RB.cleanTrack(outPts, 1);
+      if (!matched || tr.length < 2) return toast(t('tool.snapNone'), 5000);
+      // preview: new line green over the old one dashed; keep or drop
+      toolMode(true); gEdit.clearLayers();
+      L.polyline(st.track, { color: '#555', weight: 4, dashArray: '6 6', interactive: false }).addTo(gEdit);
+      L.polyline(tr, { color: '#fff', weight: 9, interactive: false }).addTo(gEdit);
+      L.polyline(tr, { color: '#0B8A3A', weight: 5, interactive: false }).addTo(gEdit);
+      var len = 0; for (var k = 1; k < tr.length; k++) len += RB.hav(tr[k - 1], tr[k]);
+      var pct = Math.round(matched / samp.length * 100);
+      var close = function () { gEdit.clearLayers(); toolBar(null); toolMode(false); };
+      toolBar(t('tool.snapPreview'), t('tool.snapStats', { pct: pct, a: (L0 / 1000).toFixed(3), b: (len / 1000).toFixed(3) }), [
+        { label: t('common.cancel'), fn: close },
+        { label: t('tool.snapUse'), cls: 'primary', fn: function () { close(); setTrack(st, tr, true); toast(t('tool.snapDone'), 4000); } }
+      ]);
+    }).catch(function () { toast(t('tool.snapFail'), 5000); });
+  }
+
+  // edit by hand: drag the dots on the line, tap a dot to remove it, tap the line to add one
+  function editStart(st) {
+    if (S.mode !== 'org') setMode('org');
+    S.edit = { st: st, track: st.track.slice(), undo: [], sel: -1 };
+    toolMode(true); gPins.clearLayers(); editRender();
+  }
+  function editEnd() { S.edit = null; gEdit.clearLayers(); toolBar(null); toolMode(false); renderAll(); }
+  function editRender() {
+    var E = S.edit; if (!E) return;
+    gEdit.clearLayers();
+    L.polyline(E.track, { color: '#fff', weight: 9, opacity: .9, interactive: false }).addTo(gEdit);
+    L.polyline(E.track, { color: '#E07000', weight: 5, interactive: false }).addTo(gEdit);
+    var b = map.getBounds().pad(0.1), idx = [];
+    E.track.forEach(function (p, i) { if (b.contains(p)) idx.push(i); });
+    // handles only when they are far enough apart on screen to grab one; otherwise ask to zoom in
+    var px = 0; for (var q = 1; q < idx.length; q++) px += map.latLngToContainerPoint(E.track[idx[q]]).distanceTo(map.latLngToContainerPoint(E.track[idx[q - 1]]));
+    var many = idx.length > 400 || (idx.length > 1 && px / (idx.length - 1) < 14);
+    if (!many) idx.forEach(function (i) {
+      var m = L.marker(E.track[i], { draggable: true, icon: L.divIcon({ className: '', html: '<div class="vtx' + (E.sel === i ? ' sel' : '') + '"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) }).addTo(gEdit);
+      m.on('dragstart', function () { E.undo.push(E.track.slice()); });
+      m.on('drag', function () { var ll = m.getLatLng(); E.track[i] = [+ll.lat.toFixed(7), +ll.lng.toFixed(7)]; });
+      m.on('dragend', function () { E.sel = -1; editRender(); });
+      m.on('click', function (ev) { L.DomEvent.stop(ev); E.sel = E.sel === i ? -1 : i; editRender(); });
+    });
+    var len = 0; for (var k = 1; k < E.track.length; k++) len += RB.hav(E.track[k - 1], E.track[k]);
+    var btns = [{ label: t('draw.undo'), fn: function () { if (E.undo.length) { E.track = E.undo.pop(); E.sel = -1; editRender(); } } }];
+    if (E.sel >= 0) btns.push({ label: t('tool.delVtx'), cls: 'danger-btn', fn: function () {
+      if (E.track.length <= 2) return; E.undo.push(E.track.slice()); E.track.splice(E.sel, 1); E.sel = -1; editRender();
+    } });
+    btns.push({ label: t('common.cancel'), fn: editEnd });
+    btns.push({ label: t('draw.done'), cls: 'primary', fn: function () {
+      var st = E.st, tr = E.track.slice(), changed = E.undo.length > 0;
+      editEnd(); if (changed) { setTrack(st, tr, true); toast(t('tool.editDone'), 3500); }
+    } });
+    toolBar(t('tool.edit') + '  ' + (len / 1000).toFixed(3) + ' km', many ? t('tool.zoomIn') : t('tool.editHint'), btns);
+  }
+  function editTap(ll) {
+    var E = S.edit, st = E.st, tr = E.track, r = RB.project(tr, RB.buildCum(tr), ll.lat, ll.lng);
+    var mpp = 156543.03392 * Math.cos(ll.lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+    if (!r || r.off > 22 * mpp) { E.sel = -1; return editRender(); }
+    E.undo.push(tr.slice()); tr.splice(r.i + 1, 0, [+r.lat.toFixed(7), +r.lon.toFixed(7)]); E.sel = r.i + 1; editRender();
+  }
+
+  // satellite picture alignment: some areas are drawn 10–20 m off; move the picture (never the route) to match
+  function offsetAt(lat, lon) {
+    var best = null;
+    (P.imgOff || []).forEach(function (o) { var d = RB.hav([lat, lon], [o.lat, o.lon]); if (d < 15000 && (!best || d < best.d)) best = { d: d, o: o }; });
+    return best ? best.o : null;
+  }
+  function applyImgOff() {
+    var el = sat.getContainer && sat.getContainer(); if (!el) return;
+    var c = map.getCenter(), o = S.sat ? offsetAt(c.lat, c.lng) : null;
+    if (!o || (!o.e && !o.n)) { el.style.transform = ''; return; }
+    var ppm = Math.pow(2, map.getZoom()) / (156543.03392 * Math.cos(c.lat * Math.PI / 180));
+    el.style.transform = 'translate(' + (o.e * ppm).toFixed(1) + 'px,' + (-o.n * ppm).toFixed(1) + 'px)';
+  }
+  function imgOffStart() {
+    if (!S.sat) setLayer(true);
+    var c = map.getCenter(), o = offsetAt(c.lat, c.lng);
+    if (!o) { o = { lat: +c.lat.toFixed(5), lon: +c.lng.toFixed(5), e: 0, n: 0 }; P.imgOff = (P.imgOff || []).concat([o]); }
+    S.imgOff = { o: o, step: 1, before: { e: o.e, n: o.n } };
+    toolMode(true); imgOffRender();
+  }
+  function imgOffRender() {
+    var I = S.imgOff; if (!I) return;
+    var o = I.o, mv = function (de, dn) { return function () { o.e = Math.round((o.e + de * I.step) * 10) / 10; o.n = Math.round((o.n + dn * I.step) * 10) / 10; applyImgOff(); imgOffRender(); }; };
+    var end = function (keep) {
+      return function () {
+        if (!keep) { o.e = I.before.e; o.n = I.before.n; }
+        if (!o.e && !o.n) P.imgOff = (P.imgOff || []).filter(function (x) { return x !== o; });
+        S.imgOff = null; toolBar(null); toolMode(false); applyImgOff(); save();
+      };
+    };
+    toolBar(t('off.title'), t('off.now', { e: (o.e >= 0 ? t('off.east') : t('off.west')) + ' ' + Math.abs(o.e), n: (o.n >= 0 ? t('off.north') : t('off.south')) + ' ' + Math.abs(o.n) }), [
+      { label: '↑', fn: mv(0, 1) }, { label: '↓', fn: mv(0, -1) }, { label: '←', fn: mv(-1, 0) }, { label: '→', fn: mv(1, 0) },
+      { label: '1 m', pressed: I.step === 1, fn: function () { I.step = 1; imgOffRender(); } }, { label: '5 m', pressed: I.step === 5, fn: function () { I.step = 5; imgOffRender(); } },
+      { label: t('off.reset'), fn: function () { o.e = 0; o.n = 0; applyImgOff(); imgOffRender(); } },
+      { label: t('common.cancel'), fn: end(false) }, { label: t('draw.done'), cls: 'primary', fn: end(true) }
+    ]);
+  }
+  $('fImgOff').onclick = imgOffStart;
+  sat.on('load tileload', function () { if (S.sat) applyImgOff(); });
+
   // ---------- Files ----------
   function download(name, text, mime) {
     var blob = new Blob([text], { type: mime }), a = document.createElement('a');
@@ -1064,71 +1316,96 @@
   function guessType(name) {
     var n = (name || '').toUpperCase();
     if (/FINISH|\bFIN\b|STOP/.test(n)) return 'FINISH';
-    if (/START/.test(n)) return 'START';
+    if (/START|^SS\s*\d/.test(n)) return 'START';
     if (/\bTC/.test(n)) return 'TC'; if (/\bPC/.test(n)) return 'PC'; if (/\bCP/.test(n)) return 'CP';
     if (/DANGER|!/.test(n)) return 'DANGER';
     return 'INFO';
   }
-  function importGpxText(text, fname) {
-    // Validate input
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
-      console.error('GPX import: empty or invalid file content');
-      throw new Error('Empty file');
-    }
-
-    var g = RB.parseGPX(text);
-    if (!g || (!g.tracks || g.tracks.length === 0) && (!g.waypoints || g.waypoints.length === 0)) {
-      console.error('GPX import: no tracks or waypoints found in', fname);
-      throw new Error('No valid GPX data');
-    }
-
-    var added = 0, wadd = 0, firstId = null;
+  // ---- route files: GPX (Geo Tracker and others), KML / KMZ (Google My Maps, Google Earth) ----
+  // Each track becomes a stage. Marked points in the file and START / FINISH boxes are offered afterwards, never forced.
+  function importParsed(g, fname, out) {
+    var base = fname.replace(/\.(gpx|kml|kmz)$/i, '');
     g.tracks.forEach(function (tk, i) {
       var tr = RB.cleanTrack(tk.pts, 2);
-      if (tr.length < 2) {
-        console.warn('GPX import: track "' + (tk.name || fname) + '" has insufficient points (' + tr.length + ')');
-        return;
-      }
-      var st = addStage(tk.name || (fname.replace(/\.gpx$/i, '') + (g.tracks.length > 1 ? ' ' + (i + 1) : '')), tr);
-      var cum = cumOf(st);
+      if (tr.length < 2) return;
+      var st = addStage(tk.name || (base + (g.tracks.length > 1 ? ' ' + (i + 1) : '')), tr), cum = cumOf(st);
+      out.stages.push(st);
       g.waypoints.forEach(function (w) {
-        if (!isFinite(w.lat) || !isFinite(w.lon)) {
-          console.warn('GPX import: waypoint has invalid coordinates', w);
-          return;
-        }
+        if (!isFinite(w.lat) || !isFinite(w.lon)) return;
         var r = RB.project(tr, cum, w.lat, w.lon);
-        if (r.off > 40) return;
-        var ty = guessType(w.name), an = RB.angleAt(tr, cum, r.d, 30);
-        an = ty === 'START' ? null : Math.abs(an) < 12 ? 0 : Math.round(an / 5) * 5;
-        var m = /\b(TC|PC|CP)\s*\d+[A-Z]?/i.exec(w.name || '');
-        st.points.push({ id: uid(), d: r.d, lat: r.lat, lon: r.lon, type: ty, danger: 1, angle: an, branches: [], th: w.name || '', en: '', note: '', code: m ? m[0].replace(/\s+/g, '').toUpperCase() : (ty === 'START' || ty === 'FINISH' ? ty : ''), time: '' });
-        wadd++;
+        if (r && r.off <= 40) out.wpts.push({ st: st, w: w, r: r });
       });
-      added++; if (!firstId) firstId = st.id;
     });
-
-    if (added === 0) {
-      console.error('GPX import: no valid tracks could be imported from', fname);
-      throw new Error('No valid tracks');
+  }
+  function wptPoint(x) {
+    var st = x.st, w = x.w, r = x.r, tr = st.track, cum = cumOf(st);
+    var ty = guessType(w.name), an = RB.angleAt(tr, cum, r.d, 30);
+    an = ty === 'START' ? null : Math.abs(an) < 12 ? 0 : Math.round(an / 5) * 5;
+    var m = /\b(TC|PC|CP)\s*\d+[A-Z]?/i.exec(w.name || '');
+    return { id: uid(), d: r.d, lat: r.lat, lon: r.lon, type: ty, danger: 1, angle: an, branches: [], th: '', en: '', note: w.name || '',
+      code: m ? m[0].replace(/\s+/g, '').toUpperCase() : (ty === 'START' || ty === 'FINISH' ? ty : ''), time: '' };
+  }
+  // KMZ is a zip with the KML inside; read it with the browser's own inflate (no library)
+  function kmzText(buf) {
+    var v = new DataView(buf), n = buf.byteLength, eocd = -1;
+    for (var i = n - 22; i >= Math.max(0, n - 66000); i--) if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) return Promise.reject(new Error('zip'));
+    var cnt = v.getUint16(eocd + 10, true), off = v.getUint32(eocd + 16, true), dec = new TextDecoder();
+    for (var k = 0; k < cnt; k++) {
+      var meth = v.getUint16(off + 10, true), csz = v.getUint32(off + 20, true), nl = v.getUint16(off + 28, true), xl = v.getUint16(off + 30, true), cl = v.getUint16(off + 32, true), lho = v.getUint32(off + 42, true);
+      var name = dec.decode(new Uint8Array(buf, off + 46, nl));
+      if (/\.kml$/i.test(name)) {
+        var start = lho + 30 + v.getUint16(lho + 26, true) + v.getUint16(lho + 28, true), data = new Uint8Array(buf, start, csz);
+        if (meth === 0) return Promise.resolve(dec.decode(data));
+        if (meth !== 8 || !window.DecompressionStream) return Promise.reject(new Error('inflate'));
+        return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+      }
+      off += 46 + nl + xl + cl;
     }
-
-    return { added: added, wadd: wadd, firstId: firstId };
+    return Promise.reject(new Error('nokml'));
+  }
+  function readRouteFile(f) {
+    var kmz = /\.kmz$/i.test(f.name);
+    return (kmz ? f.arrayBuffer().then(kmzText) : f.text()).then(function (text) {
+      var isKml = kmz || /\.kml$/i.test(f.name) || /<kml[\s>]/i.test(text.slice(0, 2000));
+      return isKml ? RB.parseKML(text) : RB.parseGPX(text);
+    });
   }
   function importGpxFiles(files) {
-    var list = Array.prototype.slice.call(files || []), tot = 0, wt = 0, first = null, done = 0;
+    var list = Array.prototype.slice.call(files || []);
     if (!list.length) return;
-    list.forEach(function (f) {
-      var fr = new FileReader();
-      fr.onload = function () {
-        try { var r = importGpxText(fr.result, f.name); tot += r.added; wt += r.wadd; first = first || r.firstId; }
-        catch (e) { toast(t('err.readFile', { f: f.name })); }
-        if (++done === list.length) {
-          if (!tot) return toast(t('err.noTrack'), 4000);
-          save(); selectStage(first, true);
-          toast(t('toast.imported', { n: tot }) + (wt ? t('toast.importedWpt', { n: wt }) : ''), 3500);
-        }
-      };
-      fr.readAsText(f);
+    var out = { stages: [], wpts: [] };
+    Promise.all(list.map(function (f) {
+      return readRouteFile(f).then(function (g) { importParsed(g, f.name, out); })
+        .catch(function () { toast(t(/\.kmz$/i.test(f.name) ? 'err.kmz' : 'err.readFile', { f: f.name }), 5000); });
+    })).then(function () {
+      if (!out.stages.length) return toast(t('err.noTrack'), 4000);
+      save(); selectStage(out.stages[0].id, true);
+      var made = 0, wp = 0;
+      // 1) points marked in the file (Geo Tracker markers, My Maps pins) near the route
+      var step1 = !out.wpts.length ? Promise.resolve() : ask({ title: t('imp.wptTitle', { n: out.wpts.length }), body: t('imp.wptBody'), ok: t('imp.wptOk') }).then(function (ok) {
+        if (!ok) return;
+        out.wpts.forEach(function (x) { x.st.points.push(wptPoint(x)); wp++; });
+      });
+      step1.then(function () {
+        // 2) START / FINISH boxes at the ends of each new route, unless the file already gave them
+        var need = out.stages.filter(function (st) {
+          var ps = st.points, L0 = lenOf(st);
+          return !ps.some(function (p) { return p.type === 'START' && p.d < 30; }) || !ps.some(function (p) { return p.type === 'FINISH' && p.d > L0 - 30; });
+        });
+        if (!need.length) return;
+        return ask({ title: t('imp.sfTitle'), body: t('imp.sfBody', { n: need.length }), ok: t('imp.sfOk') }).then(function (ok) {
+          if (!ok) return;
+          need.forEach(function (st) {
+            var L0 = lenOf(st);
+            if (!st.points.some(function (p) { return p.type === 'START' && p.d < 30; })) { var a = newPointAt(st, 0, null, 'START'); a.th = ''; a.en = ''; st.points.push(a); made++; }
+            if (!st.points.some(function (p) { return p.type === 'FINISH' && p.d > L0 - 30; })) { var b = newPointAt(st, L0, 0, 'FINISH'); b.th = ''; b.en = ''; st.points.push(b); made++; }
+          });
+        });
+      }).then(function () {
+        save(); renderAll();
+        toast(t('toast.imported', { n: out.stages.length }) + (wp ? t('toast.importedWpt', { n: wp }) : '') + (made ? t('imp.sfMade', { n: made }) : ''), 4000);
+      });
     });
   }
   $('inGpx').onchange = function () { importGpxFiles(this.files); this.value = ''; };
@@ -1142,20 +1419,26 @@
     };
     fr.readAsText(f);
   };
-  function backupJson(withPh) {
+  // backup text (with or without photos), then saved as a download or handed to the share sheet (Google Drive etc.)
+  function buildBackup(withPh) {
     var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-    var done = function () { META.dirtySince = null; META.backupAt = Date.now(); saveMeta(); };
-    if (withPh !== true) { download(safeName(P.name) + '_' + day + '.json', JSON.stringify(P), 'application/json'); done(); return Promise.resolve(); }
+    if (withPh !== true) return Promise.resolve({ name: safeName(P.name) + '_' + day + '.json', text: JSON.stringify(P), n: 0 });
     var ids = livePhotoIds(true);
-    if (!ids.length) { toast(t('ph.noneToPack')); return backupJson(false); }
+    if (!ids.length) { toast(t('ph.noneToPack')); return buildBackup(false); }
     toast(t('ph.packing', { n: ids.length }), 60000);
     return Promise.all(ids.map(function (id) { return RBP.b64(id).then(function (x) { return x ? [id, { b64: x.b64, w: x.w, h: x.h }] : null; }).catch(function () { return null; }); }))
       .then(function (list) {
         var o = Object.assign({}, P, { photoData: {} }), n = 0;
         list.forEach(function (e) { if (e) { o.photoData[e[0]] = e[1]; n++; } });
-        download(safeName(P.name) + '_' + day + '_photos.json', JSON.stringify(o), 'application/json'); done();
-        toast(t('ph.packed', { n: n }), 4000);
-      }).catch(function () { toast(t('ph.fail'), 5000); });
+        return { name: safeName(P.name) + '_' + day + '_photos.json', text: JSON.stringify(o), n: n };
+      });
+  }
+  function backupDone() { META.dirtySince = null; META.backupAt = Date.now(); saveMeta(); }
+  function backupJson(withPh) {
+    return buildBackup(withPh).then(function (b) {
+      download(b.name, b.text, 'application/json'); backupDone();
+      if (b.n) toast(t('ph.packed', { n: b.n }), 4000);
+    }).catch(function () { toast(t('ph.fail'), 5000); });
   }
   $('bSaveJson').onclick = function () { backupJson(false); };
   $('bSaveJsonPh').onclick = function () { backupJson(true); };
@@ -1252,7 +1535,8 @@
   function renderOverview(st, w, h) {
     var i = P.stages.indexOf(st), extra = [P.stages[i - 1], P.stages[i + 1]].filter(function (x) { return x && kindOf(x) === 'liaison'; })
       .map(function (x) { return { track: x.track, color: stageColor(x) }; });
-    var opts = { track: st.track, labels: overviewLabels(st), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra };
+    var mid = st.track[Math.floor(st.track.length / 2)], sh = S.sat && mid ? offsetAt(mid[0], mid[1]) : null;
+    var opts = { track: st.track, labels: overviewLabels(st), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra, shift: sh ? { e: sh.e, n: sh.n } : null };
     var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
     return fontReady.then(function () { return RBO.render(opts); }).then(function (cv) {
       try { cv.toDataURL('image/png'); return cv; } // a tile without CORS would block reading the picture
@@ -1932,13 +2216,16 @@
     };
     $('sUpdate').onclick = checkForUpdate;
     $('sForceUpdate').onclick = function () {
-      if (swReg) {
-        swReg.postMessage('skip');
-        swReg.postMessage('claim');
+      // ask the server for the newest files, switch to them as soon as they are in, then reload
+      if (!swReg) return toast(t('set.noUpdate'), 3000);
+      updMsg(t('set.checking'));
+      swReg.update().catch(function () {}).then(function () {
+        var w = swReg.waiting || swReg.installing;
+        if (!w) return updMsg(t('set.upToDate', { v: APP_VER }));
+        var go = function () { if (swReg.waiting) swReg.waiting.postMessage('skip'); };
+        if (swReg.waiting) go(); else w.addEventListener('statechange', function () { if (w.state === 'installed') go(); });
         toast(t('toast.update'), 5000);
-      } else {
-        toast(t('set.noUpdate'), 3000);
-      }
+      });
     };
     if (window.caches) caches.open('rb-tiles').then(function (c) { return c.keys(); }).then(function (k) { if ($('sTiles')) $('sTiles').textContent = t('set.tiles', { n: k.length }); }).catch(function () {});
     else $('sTiles').textContent = '';
@@ -1983,23 +2270,17 @@
 
   // ---------- Save to Google Drive ----------
   function saveToDrive() {
-    backupJson(true).then(function (blob) {
-      var file = new File([blob], safeName(P.name) + '_photos.json', { type: 'application/json' });
-      if (navigator.share && navigator.share.canShare({ files: [file] })) {
-        navigator.share({
-          title: P.name,
-          files: [file]
-        }).catch(function (e) {
-          console.error('Share failed:', e);
+    buildBackup(true).then(function (b) {
+      var file = new File([b.text], b.name, { type: 'application/json' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        return navigator.share({ title: P.name, files: [file] }).then(backupDone).catch(function (e) {
+          if (e && e.name === 'AbortError') return; // closed the share sheet
           toast(t('set.driveError'), 3000);
         });
-      } else {
-        toast(t('set.driveNotSupported'), 3000);
       }
-    }).catch(function (e) {
-      console.error('Backup failed:', e);
-      toast(t('ph.fail'), 3000);
-    });
+      // no share sheet with files here (most computers): save the file instead
+      download(b.name, b.text, 'application/json'); backupDone(); toast(t('set.driveNotSupported'), 4000);
+    }).catch(function () { toast(t('ph.fail'), 3000); });
   }
 
   // ---------- Render all ----------
@@ -2041,4 +2322,6 @@
     var reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function () { if (!reloaded) { reloaded = true; location.reload(); } });
   }
+  // test hook, only with ?debug in the address
+  if (/[?&]debug\b/.test(location.search)) window.__rb = { get P() { return P; }, get S() { return S; }, map: map, sat: sat, selectStage: selectStage };
 })();
