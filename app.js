@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.0.0';
+  var APP_VER = '2.0.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -804,20 +804,41 @@
     if (D.curve !== 'gps') { D.curve = 'gps'; refreshShape(st, D, 200); if (D.curve !== 'gps') return toast(t('pt.shapeNone')); }
     $('ptOsmMsg').textContent = t('osm.loading');
     var q = '[out:json][timeout:20];way(around:150,' + D.lat.toFixed(6) + ',' + D.lon.toFixed(6) + ')[highway];(._;>;);out body;';
-    fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (j) {
-        if (D !== target) return;
-        var nodes = {}; j.elements.forEach(function (el) { if (el.type === 'node') nodes[el.id] = [+el.lat.toFixed(6), +el.lon.toFixed(6)]; });
-        D.osm = j.elements.filter(function (el) { return el.type === 'way' && el.tags && el.tags.highway && !SKIP_HW[el.tags.highway]; })
-          .map(function (w) { return { h: w.tags.highway, s: w.tags.surface || '', p: w.nodes.map(function (id) { return nodes[id]; }).filter(Boolean) }; });
+    overpass(q, function (k) { if (D === target) $('ptOsmMsg').textContent = t('osm.trying', { n: k + 1 }); }).then(function (j) {
+      if (D !== target) return;
+      try {
+        var nodes = {}; (j.elements || []).forEach(function (el) { if (el.type === 'node') nodes[el.id] = [+el.lat.toFixed(6), +el.lon.toFixed(6)]; });
+        D.osm = (j.elements || []).filter(function (el) { return el.type === 'way' && el.tags && el.tags.highway && !SKIP_HW[el.tags.highway] && el.nodes; })
+          .map(function (w) { return { h: w.tags.highway, s: w.tags.surface || '', p: w.nodes.map(function (id) { return nodes[id]; }).filter(Boolean) }; })
+          .filter(function (w) { return w.p.length > 1; });
         refreshShape(st, D);
-        var n = D.shape && D.shape.side ? D.shape.side.length : 0;
-        $('ptOsmMsg').textContent = n ? t('osm.done', { n: n }) : t('osm.none');
-        if (!n) delete D.osm;
-        syncDlg();
-      })
-      .catch(function () { if (D === target) $('ptOsmMsg').textContent = t('osm.fail'); });
+      } catch (e) { if (window.console) console.error(e); delete D.osm; $('ptOsmMsg').textContent = t('osm.bad', { e: String(e && e.message || e) }); return; }
+      var n = D.shape && D.shape.side ? D.shape.side.length : 0;
+      $('ptOsmMsg').textContent = n ? t('osm.done', { n: n }) : t('osm.none');
+      if (!n) delete D.osm;
+      syncDlg();
+    }).catch(function (e) {
+      if (D !== target) return;
+      $('ptOsmMsg').textContent = !navigator.onLine ? t('osm.fail') : t('osm.busy', { e: e && e.message ? e.message : '' });
+    });
+  }
+  // OpenStreetMap road data. The public servers are often busy (429 / 504), so try the next one when one fails.
+  var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  var overpassFirst = 0; // the server that answered last time goes first
+  function overpass(q, onTry) {
+    var errs = [];
+    function attempt(k) {
+      if (k >= OVERPASS.length) return Promise.reject(new Error(errs.join(', ')));
+      var i = (overpassFirst + k) % OVERPASS.length;
+      if (k && onTry) onTry(k);
+      var ctrl = window.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ctrl) ctrl.abort(); }, 25000);
+      return fetch(OVERPASS[i], { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(function (j) { clearTimeout(to); if (!j || !j.elements) throw new Error('data'); overpassFirst = i; return j; })
+        .catch(function (e) { clearTimeout(to); errs.push(e && e.name === 'AbortError' ? 'timeout' : (e && e.message) || 'net'); return attempt(k + 1); });
+    }
+    return attempt(0);
   }
   $('ptOsm').onclick = fetchSideRoads;
   $('ptOsmClear').onclick = function () { if (!D) return; delete D.osm; if (D.shape) delete D.shape.side; $('ptOsmMsg').textContent = ''; syncDlg(); };
