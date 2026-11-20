@@ -199,6 +199,13 @@ body.mode-nav.nomap #dash .rb-box{min-height:120px}
 #toolBar .drawinfo{flex-direction:column;gap:2px;align-items:flex-start}
 #toolBar .drawinfo b{font-size:17px}
 .drawbtns>button[aria-pressed=true]{background:var(--ink);color:var(--paper)}
+.ssn-icon{background:none;border:0}
+.ssn{position:absolute;left:0;top:0;transform:translate(-50%,calc(-100% - 9px));box-sizing:border-box;height:22px;padding:0 8px;background:var(--c);color:#fff;font:700 15px/22px "Barlow Condensed",var(--t);text-align:center;white-space:nowrap;border-radius:3px;box-shadow:0 0 0 1.5px #fff,0 2px 4px rgba(0,0,0,.45);opacity:.85;cursor:pointer}
+.ssn::after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top:8px solid var(--c)}
+.ssn.sel{opacity:1;box-shadow:0 0 0 2px #fff,0 2px 6px rgba(0,0,0,.6)}
+.ssn.tap{width:auto;opacity:1;cursor:default}
+.ssn.dark{color:#000}
+.ssdot{position:absolute;left:-6px;top:-6px;width:12px;height:12px;box-sizing:border-box;border-radius:50%;background:var(--c);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)}
 .tarr{background:none;border:0;pointer-events:none}
 .vtx{width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #E8590C;box-sizing:border-box}
 .vtx.sel{background:#E8590C;border-color:#000;transform:scale(1.35)}

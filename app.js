@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.0.2';
+  var APP_VER = '2.1.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -186,7 +186,7 @@
   var map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([13.75, 100.5], 6);
   var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' }).addTo(map);
   var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18, crossOrigin: 'anonymous', attribution: 'Imagery &copy; Esri' });
-  var gTracks = L.layerGroup().addTo(map), gPins = L.layerGroup().addTo(map), gSug = L.layerGroup().addTo(map), gNav = L.layerGroup().addTo(map), gRec = L.layerGroup().addTo(map), gDraw = L.layerGroup().addTo(map), gArrows = L.layerGroup().addTo(map), gEdit = L.layerGroup().addTo(map);
+  var gTracks = L.layerGroup().addTo(map), gPins = L.layerGroup().addTo(map), gSug = L.layerGroup().addTo(map), gNav = L.layerGroup().addTo(map), gRec = L.layerGroup().addTo(map), gDraw = L.layerGroup().addTo(map), gArrows = L.layerGroup().addTo(map), gEdit = L.layerGroup().addTo(map), gNames = L.layerGroup().addTo(map);
   var draftMarker = null;
   function dot() { return L.divIcon({ className: '', html: '<div class="gpsdot"></div>', iconSize: [20, 20] }); }
 
@@ -264,13 +264,57 @@
       if (st.id === S.stageId) return;
       L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
       L.polyline(st.track, { color: stageColor(st), weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks);
+      // Free run / service legs have no name tag; tapping the line shows the name for a moment
+      if (kindOf(st) !== 'ss' && st.track.length > 1) L.polyline(st.track, { color: '#000', weight: 20, opacity: 0.01 }).on('click', function (e) {
+        if (S.draw || S.edit || S.imgOff || S.addMode) return; // the tap belongs to the open tool
+        L.DomEvent.stop(e); tapName(st, e.latlng);
+      }).addTo(gTracks);
     });
     var st = stage();
     if (st) {
       L.polyline(st.track, { color: '#fff', weight: 10, opacity: .95, interactive: false }).addTo(gTracks);
       L.polyline(st.track, { color: stageColor(st), weight: 6, interactive: false }).addTo(gTracks);
     }
-    drawArrows();
+    drawArrows(); drawNames();
+  }
+  // ---------- Stage name tags ----------
+  // Every SS gets a small red tag pointing at its start. Tags are laid out in screen space; one that would cover
+  // another is shown as a dot until you zoom in. The selected SS goes first so its tag always shows.
+  var nameCtx = document.createElement('canvas').getContext('2d');
+  function nameLayout() {
+    var z = map.getZoom(), out = [], placed = [];
+    nameCtx.font = '700 15px "Barlow Condensed", ' + getComputedStyle(document.body).fontFamily;
+    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name; })
+      .sort(function (a, b) { return (b.id === S.stageId) - (a.id === S.stageId); })
+      .forEach(function (st) {
+        var q = map.project(st.track[0], z), x = q.x + OFF, y = q.y + OFF;
+        var w = Math.ceil(nameCtx.measureText(st.name).width * 1.1) + 20, h = 22; // a little wider than measured: Thai falls back to another font
+        var box = { x: x - w / 2, y: y - 9 - h, w: w, h: h + 9 };
+        var show = st.id === S.stageId || !placed.some(function (b) { return rectsOverlap(b, box); });
+        if (show) placed.push(box);
+        out.push({ st: st, x: x, y: y, w: w, box: box, show: show });
+      });
+    return out;
+  }
+  function drawNames() {
+    gNames.clearLayers();
+    if (S.draw || S.edit) return;
+    nameLayout().forEach(function (n) {
+      var sel = n.st.id === S.stageId, c = stageColor(n.st);
+      var html = n.show ? '<div class="ssn' + (sel ? ' sel' : '') + '" style="--c:' + c + '">' + RB.esc(n.st.name) + '</div>'
+        : '<div class="ssdot" style="--c:' + c + '"></div>';
+      var m = L.marker(n.st.track[0], { keyboard: false, zIndexOffset: sel ? 400 : 300, icon: L.divIcon({ className: 'ssn-icon', html: html, iconSize: [0, 0], iconAnchor: [0, 0] }) }).addTo(gNames);
+      // tapping another SS's tag selects that SS
+      m.on('click', function (e) { L.DomEvent.stop(e); if (S.draw || S.edit || S.imgOff) return; if (!sel) selectStage(n.st.id, false); });
+    });
+  }
+  var tapTimer = null;
+  function tapName(st, ll) {
+    gNames.eachLayer(function (l) { if (l._tap) gNames.removeLayer(l); });
+    var c = stageColor(st), m = L.marker(ll, { interactive: false, keyboard: false, zIndexOffset: 600, icon: L.divIcon({ className: 'ssn-icon', iconSize: [0, 0], iconAnchor: [0, 0],
+      html: '<div class="ssn tap' + (kindOf(st) === 'evac' ? ' dark' : '') + '" style="--c:' + c + '">' + RB.esc(st.name || '') + ' · ' + (lenOf(st) * fac(st) / 1000).toFixed(2) + ' km</div>' }) });
+    m._tap = true; m.addTo(gNames);
+    clearTimeout(tapTimer); tapTimer = setTimeout(function () { gNames.removeLayer(m); }, 3500);
   }
   // small arrows along the selected route every ~90 px, so it is clear which way it runs
   function drawArrows() {
@@ -302,7 +346,8 @@
   function layoutControls(st, ctrls) {
     var f = fac(st), z = map.getZoom();
     var base = ctrls.map(function (p) { var q = map.project([p.lat, p.lon], z); return { p: p, x: q.x + OFF, y: q.y + OFF }; });
-    var dots = base.map(function (b) { return { x: b.x - 9, y: b.y - 9, w: 18, h: 18 }; });
+    var dots = base.map(function (b) { return { x: b.x - 9, y: b.y - 9, w: 18, h: 18 }; })
+      .concat(nameLayout().filter(function (n) { return n.show; }).map(function (n) { return n.box; })); // keep clear of SS name tags
     function attempt(mode, groups) {
       var items = groups.map(function (g) {
         var code = g.map(function (b) { return b.p.code || b.p.type; }).join(' / ');
@@ -379,7 +424,7 @@
       });
     });
   }
-  map.on('zoomend', function () { drawPins(); });
+  map.on('zoomend', function () { drawNames(); drawPins(); });
   function drawSuggest() {
     gSug.clearLayers();
     var st = stage(); if (!st || S.mode !== 'org') return;
@@ -578,7 +623,7 @@
       '<div class="group"><h3>Overview</h3><button id="sOverview">' + t('ov.png') + '</button><p class="note">' + t('ov.note') + '</p></div>' +
       '<div class="group"><button id="sDel" class="danger-btn">' + t('stage.delete') + '</button></div>';
 
-    $('sName').onchange = function () { st.name = this.value.trim() || st.name; save(); renderStageSel(); };
+    $('sName').onchange = function () { st.name = this.value.trim() || st.name; save(); renderStageSel(); drawNames(); drawPins(); };
     $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
     $('sOverview').onclick = exportOverviewPng;
     $('sGo').onclick = function () { var a = stageStart(st); openDirections(a[0], a[1]); };
@@ -1022,7 +1067,7 @@
     setAdd(false); S.suggest = []; drawSuggest();
     S.draw = { wps: [], segs: [], snap: CFG.drawSnap !== false, warned: false };
     $('drawBar').hidden = false; $('fDraw').hidden = true; $('fAdd').hidden = true; $('fFilter').hidden = true;
-    gPins.clearLayers(); map.getContainer().style.cursor = 'crosshair';
+    gPins.clearLayers(); gNames.clearLayers(); map.getContainer().style.cursor = 'crosshair';
     mapFull(true); drawRender();
   }
   // drawing and line tools take the whole screen for the map; the panel comes back when they close
@@ -1034,7 +1079,7 @@
   function drawEnd() {
     S.draw = null; gDraw.clearLayers();
     $('drawBar').hidden = true; $('fDraw').hidden = false; $('fAdd').hidden = false; $('fFilter').hidden = false;
-    map.getContainer().style.cursor = ''; mapFull(false); drawPins();
+    map.getContainer().style.cursor = ''; mapFull(false); drawNames(); drawPins();
   }
   function drawCancel(then) {
     var fin = function () { drawEnd(); if (typeof then === 'function') then(); };
@@ -1254,7 +1299,7 @@
   function editStart(st) {
     if (S.mode !== 'org') setMode('org');
     S.edit = { st: st, track: st.track.slice(), undo: [], sel: -1 };
-    toolMode(true); gPins.clearLayers(); editRender();
+    toolMode(true); gPins.clearLayers(); gNames.clearLayers(); editRender();
   }
   function editEnd() { S.edit = null; gEdit.clearLayers(); toolBar(null); toolMode(false); renderAll(); }
   function editRender() {
@@ -1557,7 +1602,7 @@
     var f = fac(st);
     return pts(st).filter(RB.isControl).map(function (p) {
       return { lat: p.lat, lon: p.lon, title: p.code || p.type, sub: fmtKm(p.d * f / 1000, CFG.navDec) + ' km', kind: p.type };
-    });
+    }).concat(kindOf(st) === 'ss' && st.name && st.track.length ? [{ lat: st.track[0][0], lon: st.track[0][1], title: st.name, kind: 'NAME', fill: stageColor(st), ink: '#fff' }] : []);
   }
   function renderOverview(st, w, h) {
     var i = P.stages.indexOf(st), extra = [P.stages[i - 1], P.stages[i + 1]].filter(function (x) { return x && kindOf(x) === 'liaison'; })
