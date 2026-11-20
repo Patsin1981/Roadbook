@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.3.1';
+  var APP_VER = '2.4.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1862,6 +1862,15 @@
     });
   };
   $('bSortStages').onclick = function () { sortStagesAsk(false); };
+  // KML for Google My Maps: import it once there, then share the map link; it opens in the Google Maps app
+  $('bKmlOut').onclick = function () {
+    if (!P.stages.length) return toast(t('err.noStage'));
+    sortStagesAsk(true).then(function (list) {
+      if (!list) return;
+      download(safeName(P.name) + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml');
+      ask({ title: t('kml.title'), body: t('kml.body'), ok: t('kml.open') }).then(function (ok) { if (ok) window.open('https://www.google.com/maps/d/', '_blank', 'noopener'); });
+    });
+  };
 
   // ---------- Running order of the legs ----------
   // From the SS numbers in the names: "SS3 ..." runs at 3, "Free run SS3 to SS4" just after SS3,

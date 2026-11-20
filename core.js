@@ -541,6 +541,50 @@
     return '<extensions><gpx_style:line><gpx_style:color>' + h + '</gpx_style:color><gpx_style:width>4</gpx_style:width></gpx_style:line>' +
       '<osmand:color>#FF' + h + '</osmand:color><gpxx:TrackExtension><gpxx:DisplayColor>' + best + '</gpxx:DisplayColor></gpxx:TrackExtension></extensions>';
   }
+  // ---- KML for Google My Maps / Google Earth: coloured lines in running order + control points ----
+  // Lines are thinned (points closer than ~3 m to the straight line between their neighbours are dropped)
+  // so a whole event stays well under the My Maps import limit of 5 MB.
+  function thin(tr, tol) {
+    if (tr.length < 3) return tr.slice();
+    var lat0 = tr[0][0] * Math.PI / 180, kx = 111320 * Math.cos(lat0), ky = 110540, keep = new Uint8Array(tr.length), stack = [[0, tr.length - 1]];
+    keep[0] = keep[tr.length - 1] = 1;
+    while (stack.length) {
+      var se = stack.pop(), a = se[0], b = se[1], ax = tr[a][1] * kx, ay = tr[a][0] * ky, bx = tr[b][1] * kx, by = tr[b][0] * ky;
+      var dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, far = -1, fd = tol;
+      for (var i = a + 1; i < b; i++) {
+        var px = tr[i][1] * kx - ax, py = tr[i][0] * ky - ay, tt = L2 ? Math.max(0, Math.min(1, (px * dx + py * dy) / L2)) : 0;
+        var d = Math.sqrt(Math.pow(px - tt * dx, 2) + Math.pow(py - tt * dy, 2));
+        if (d > fd) { fd = d; far = i; }
+      }
+      if (far > 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+    }
+    return tr.filter(function (p, i) { return keep[i]; });
+  }
+  function kmlColor(hex) { var h = String(hex || '#D0021B').replace('#', ''); return 'ff' + h.substr(4, 2) + h.substr(2, 2) + h.substr(0, 2); } // KML is aabbggrr
+  function stageKML(stages, opts) {
+    opts = opts || {};
+    var colorOf = opts.colorOf || function () { return '#D0021B'; }, kindName = opts.kindName || function () { return ''; };
+    var w = String(stages.length).length < 2 ? 2 : String(stages.length).length, styles = {}, lines = '', pins = '';
+    stages.forEach(function (st, k) {
+      var col = colorOf(st), sid = 'l' + col.replace('#', '');
+      styles[sid] = '<Style id="' + sid + '"><LineStyle><color>' + kmlColor(col) + '</color><width>4</width></LineStyle></Style>';
+      var f = st.factor || 1, len = 0;
+      for (var i = 1; i < st.track.length; i++) len += hav(st.track[i - 1], st.track[i]);
+      lines += '<Placemark><name>' + esc((opts.numbered ? ('000' + (k + 1)).slice(-w) + ' ' : '') + st.name) + '</name><description>' + esc(kindName(st) + ' · ' + (len * f / 1000).toFixed(2) + ' km') +
+        '</description><styleUrl>#' + sid + '</styleUrl><LineString><tessellate>1</tessellate><coordinates>' +
+        thin(st.track, 3).map(function (p) { return p[1].toFixed(6) + ',' + p[0].toFixed(6); }).join(' ') + '</coordinates></LineString></Placemark>\n';
+      var isSS = !st.kind || st.kind === 'ss', ss = isSS ? (/\bSS\s*\d+/i.exec(st.name || '') || [''])[0].replace(/\s+/g, '').toUpperCase() : '';
+      sortedPoints(st).forEach(function (p) {
+        if (!isControl(p)) return;
+        var lbl = p.code || ZONE_WORDS[p.type] || typeLabel(p);
+        var nm = ss ? (lbl.replace(/\s+/g, '').toUpperCase().indexOf(ss) < 0 ? ss + ' ' : '') + lbl : (!p.code || p.code === p.type) ? st.name + ' ' + lbl : lbl;
+        pins += '<Placemark><name>' + esc(nm) + '</name><description>' + esc(st.name + ' · ' + (p.d * f / 1000).toFixed(2) + ' km' + (p.time ? ' · ' + p.time : '') + (p.place ? ' · ' + p.place : '')) +
+          '</description><Point><coordinates>' + p.lon.toFixed(6) + ',' + p.lat.toFixed(6) + '</coordinates></Point></Placemark>\n';
+      });
+    });
+    return '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>' + esc(opts.name || 'Rally Roadbook') + '</name>\n' +
+      Object.keys(styles).map(function (k) { return styles[k]; }).join('\n') + '\n' + lines + pins + '</Document></kml>\n';
+  }
   var ZONE_WORDS = { SVCIN: 'SERVICE IN', SVCOUT: 'SERVICE OUT', PFIN: 'PARC FERME IN', PFOUT: 'PARC FERME OUT', RGIN: 'REGROUP IN', RGOUT: 'REGROUP OUT' };
   // opts.controlsOnly: waypoints only for control points (START, FINISH, TC, service, ...), no tulips
   // opts.numbered: track names get the running order in front ("01 HQ to SS1")
@@ -578,7 +622,7 @@
     hav: hav, bearing: bearing, normAngle: normAngle, cleanTrack: cleanTrack, buildCum: buildCum, idxAt: idxAt,
     pointAt: pointAt, project: project, angleAt: angleAt, detectTurns: detectTurns, parseGPX: parseGPX,
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
-    Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, logGPX: logGPX, sortedPoints: sortedPoints,
+    Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, stageKML: stageKML, thinTrack: thin, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
     ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, roadShape: roadShape, shapeXY: shapeXY, parseKML: parseKML
   };
