@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.1.0';
+  var APP_VER = '2.2.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -136,6 +136,10 @@
     $('askOk').textContent = o.ok || t('common.ok'); $('askNo').textContent = o.cancel || t('common.cancel');
     $('askOk').className = o.danger ? 'danger-fill' : 'primary';
     $('askAlt').hidden = !o.alt; $('askAlt').textContent = o.alt || '';
+    // o.choices: several answers as full-width buttons, the promise resolves with the chosen value
+    var ch = $('askChoices'); ch.hidden = !o.choices; $('askOk').hidden = !!o.choices;
+    ch.innerHTML = (o.choices || []).map(function (c, i) { return '<button type="button" data-ch="' + i + '"' + (c.primary ? ' class="primary"' : '') + '>' + RB.esc(c.label) + (c.note ? '<small>' + RB.esc(c.note) + '</small>' : '') + '</button>'; }).join('');
+    ch.onclick = function (e) { var b = e.target.closest('[data-ch]'); if (b) askDone(o.choices[+b.dataset.ch].v); };
     return new Promise(function (resolve) {
       askState = { resolve: resolve, input: o.input != null };
       $('askDlg').showModal();
@@ -598,6 +602,7 @@
       '<button type="button" id="sGo" class="go-btn">' + t('go.start') + '</button>' +
       '<div class="row2"><button type="button" id="sEdit">' + t('tool.edit') + '</button><button type="button" id="sSnap">' + t('tool.snap') + '</button></div>' +
       '<div class="row2"><button type="button" id="sReverse">' + t('tool.reverse') + '</button>' + (st.trackOrig ? '<button type="button" id="sRestore">' + t('tool.restore') + '</button>' : '<span></span>') + '</div>' +
+      (P.stages[P.stages.indexOf(st) + 1] ? '<button type="button" id="sMerge">' + t('merge.next', { b: RB.esc(P.stages[P.stages.indexOf(st) + 1].name) }) + '</button>' : '') +
       '<div class="kv"><span>' + t('stage.lenGps') + '</span><b>' + (L0 / 1000).toFixed(3) + ' km</b><span>' + t('stage.lenAdj') + '</span><b>' + (L0 * f / 1000).toFixed(3) + ' km</b><span>' + t('stage.nPoints') + '</span><b>' + st.points.length + '</b></div></div>' +
 
       '<div class="group"><h3>' + t('stage.calTitle') + '</h3>' +
@@ -630,6 +635,7 @@
     $('sEdit').onclick = function () { editStart(st); };
     $('sSnap').onclick = function () { snapStage(st); };
     $('sReverse').onclick = function () { reverseStage(st); };
+    if ($('sMerge')) $('sMerge').onclick = function () { mergeNext(P.stages.indexOf(st), false); };
     if ($('sRestore')) $('sRestore').onclick = function () {
       ask({ title: t('tool.restoreTitle'), body: t('tool.restoreBody'), ok: t('tool.restore') }).then(function (ok) { if (ok) { var o = st.trackOrig; delete st.trackOrig; setTrack(st, o, false); toast(t('tool.restored')); } });
     };
@@ -1166,10 +1172,13 @@
   function joinGap(i) {
     var A = P.stages[i], B = P.stages[i + 1]; if (!A || !B) return;
     var a = A.track[A.track.length - 1], b = B.track[0];
-    ask({ title: t('join.title', { a: A.name, b: B.name }), body: t('join.body', { km: (RB.hav(a, b) / 1000).toFixed(2) }), ok: t('join.road'), alt: t('join.line') }).then(function (r) {
+    ask({ title: t('join.title', { a: A.name, b: B.name }), body: t('join.body', { km: (RB.hav(a, b) / 1000).toFixed(2) }), choices: [
+      { v: 'road', label: t('join.road'), note: t('join.roadNote'), primary: true }, { v: 'line', label: t('join.line'), note: t('join.lineNote') },
+      { v: 'merge', label: t('merge.btn'), note: t('merge.note', { b: B.name, a: A.name }) }] }).then(function (r) {
       if (!r) return;
+      if (r === 'merge') return mergeNext(i, true);
       drawStart();
-      var d = S.draw; d.snap = r === true; d.join = { after: i };
+      var d = S.draw; d.snap = r === 'road'; d.join = { after: i };
       d.wps = [{ lat: a[0], lon: a[1], snap: d.snap, fixed: true }, { lat: b[0], lon: b[1], snap: d.snap, fixed: true }];
       d.segs = [{ pts: null }]; routeSeg(0); drawRender();
       toast(t('join.hint'), 5000);
@@ -1227,6 +1236,11 @@
     var turns = st.points.filter(function (p) { return !RB.isControl(p) && p.angle; }).length;
     ask({ title: t('tool.revTitle'), body: t('tool.revBody') + (turns ? '\n\n' + t('tool.revTurns', { n: turns }) : ''), ok: t('tool.reverse') }).then(function (ok) {
       if (!ok) return;
+      reverseCore(st);
+      save(); navResetMatch(); renderAll(); toast(t('tool.reversed'), 4000);
+    });
+  }
+  function reverseCore(st) {
       var L0 = lenOf(st);
       st.track = st.track.slice().reverse();
       if (st.trackOrig) st.trackOrig = st.trackOrig.slice().reverse();
@@ -1239,9 +1253,66 @@
         }
         refreshShape(st, p);
       });
-      save(); navResetMatch(); renderAll(); toast(t('tool.reversed'), 4000);
+  }
+
+  // ---------- Merge a leg with the next one into one leg ----------
+  // The first leg keeps its name, kind and calibration; the second leg's boxes move over with their km counted on.
+  // Every choice is asked: direction of the second line, how to cross the gap, and the boxes left in the middle.
+  function mergeNext(i, fromGap) {
+    var A = P.stages[i], B = P.stages[i + 1];
+    if (!A || !B || A.track.length < 2 || B.track.length < 2) return toast(t('merge.none'));
+    var aEnd = A.track[A.track.length - 1];
+    var step0 = fromGap ? Promise.resolve(true) : ask({ title: t('merge.title', { a: A.name, b: B.name }), body: t('merge.body', { a: A.name, b: B.name }), ok: t('merge.btn') });
+    step0.then(function (ok) {
+      if (!ok) return null;
+      // 1. second line recorded the other way? (its end is much nearer the first line's end than its start)
+      var dS = RB.hav(aEnd, B.track[0]), dE = RB.hav(aEnd, B.track[B.track.length - 1]);
+      if (dE < dS / 2 && dS > 50) return ask({ title: t('merge.revTitle'), body: t('merge.revBody', { b: B.name, s: fmtM(dS), e: fmtM(dE) }), ok: t('merge.revYes'), alt: t('merge.revNo') })
+        .then(function (r) { if (!r) return null; if (r === true) reverseCore(B); return true; });
+      return true;
+    }).then(function (ok) {
+      if (!ok) return null;
+      // 2. the gap between the two lines
+      var gap = RB.hav(aEnd, B.track[0]);
+      if (gap <= 5) return [];
+      return ask({ title: t('merge.gapTitle', { m: fmtM(gap) }), body: t('merge.gapBody'), choices: [
+        { v: 'road', label: t('join.road'), note: t('join.roadNote'), primary: true }, { v: 'line', label: t('join.line'), note: t('merge.lineNote') }] })
+        .then(function (r) {
+          if (!r) return null;
+          if (r === 'line') return [];
+          toast(t('merge.routing'), 15000);
+          return fetch(OSRM + aEnd[1] + ',' + aEnd[0] + ';' + B.track[0][1] + ',' + B.track[0][0] + '?overview=full&geometries=geojson')
+            .then(function (res) { return res.json(); })
+            .then(function (j) { $('toast').hidden = true; var c = j && j.routes && j.routes[0] && j.routes[0].geometry.coordinates; if (!c) throw new Error('no route'); return c.map(function (q) { return [+q[1].toFixed(6), +q[0].toFixed(6)]; }); })
+            .catch(function () { $('toast').hidden = true; return ask({ title: t('merge.noRoad'), ok: t('join.line') }).then(function (r2) { return r2 ? [] : null; }); });
+        });
+    }).then(function (conn) {
+      if (!conn) return null;
+      // 3. FINISH of the first line and START of the second would sit in the middle
+      var LA = lenOf(A), mid = A.points.filter(function (p) { return p.type === 'FINISH' && LA - p.d < 50; })
+        .concat(B.points.filter(function (p) { return p.type === 'START' && p.d < 50; }));
+      if (!mid.length) return { conn: conn, drop: [] };
+      return ask({ title: t('merge.midTitle'), body: t('merge.midBody', { list: mid.map(function (p) { return p.code || p.type; }).join(', ') }), ok: t('merge.midDel'), alt: t('merge.midKeep') })
+        .then(function (r) { return r ? { conn: conn, drop: r === true ? mid : [] } : null; });
+    }).then(function (o) {
+      if (!o) return;
+      var tr = A.track.concat(o.conn, B.track), clean = [];
+      tr.forEach(function (q) { var l = clean[clean.length - 1]; if (!l || l[0] !== q[0] || l[1] !== q[1]) clean.push(q); });
+      var off = 0, bi = A.track.length + o.conn.length; // where the second line starts in the joined line
+      for (var k = 1; k < A.track.length + o.conn.length + 1 && k < tr.length; k++) off += RB.hav(tr[k - 1], tr[k]);
+      var drop = {}; o.drop.forEach(function (p) { drop[p.id] = 1; });
+      var fA = fac(A);
+      A.points = A.points.filter(function (p) { return !drop[p.id]; })
+        .concat(B.points.filter(function (p) { return !drop[p.id]; }).map(function (p) { p.d += off; return p; }));
+      if (B.tsd && B.tsd.length) A.tsd = (A.tsd || []).concat(B.tsd.map(function (r) { return Object.assign({}, r, { fromKm: +(r.fromKm + off * fA / 1000).toFixed(2) }); }));
+      A.track = clean; delete A.trackOrig; void bi;
+      P.stages.splice(i + 1, 1);
+      A.points.forEach(function (p) { refreshShape(A, p); });
+      S.stageId = A.id; save(); navResetMatch(); renderAll();
+      toast(t('merge.done', { b: B.name, a: A.name, km: (lenOf(A) * fA / 1000).toFixed(2) }), 5000);
     });
   }
+  function fmtM(m) { return m < 1000 ? Math.round(m) + ' ' + t('unit.m') : (m / 1000).toFixed(2) + ' km'; }
 
   // snap to roads (OpenStreetMap map matching). Roads missing from the map keep the recorded line.
   var OSRM_MATCH = 'https://router.project-osrm.org/match/v1/driving/';

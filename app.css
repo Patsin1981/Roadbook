@@ -129,6 +129,9 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .branches{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:6px;font-size:14px;color:var(--mute)}
 .branches button{min-height:38px;padding:0 6px;background:#fff}
 .dlg-foot{display:flex;gap:8px;align-items:center}
+.ask-choices{display:flex;flex-direction:column;gap:8px;margin:4px 0 12px}
+.ask-choices button{min-height:56px;padding:8px 14px;text-align:left;font-weight:700;display:flex;flex-direction:column;gap:2px}
+.ask-choices button small{font-weight:400;font-size:13px;opacity:.8}
 .spacer{flex:1}
 
 /* Navigator dashboard */
