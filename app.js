@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.2.1';
+  var APP_VER = '2.2.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1320,7 +1320,7 @@
     var cum = cumOf(st), L0 = lenOf(st), step = 15, samp = [];
     for (var d = 0; d < L0; d += step) samp.push(RB.pointAt(st.track, cum, d));
     samp.push(st.track[st.track.length - 1]);
-    var chunks = [], CH = 90;
+    var chunks = [], CH = matchMax;
     for (var i = 0; i < samp.length - 1; i += CH - 1) chunks.push(samp.slice(i, i + CH));
     toast(t('tool.snapping'), 30000);
     var outPts = [], matched = 0;
@@ -1363,11 +1363,14 @@
       ]);
     }).catch(function (e) {
       $('toast').hidden = true;
+      // the server takes fewer points per request than we sent: halve the piece size and start again
+      if (e && e.code === 'TooBig' && matchMax > 10) { matchMax = Math.max(10, Math.floor(matchMax / 2)); return snapStage(st); }
       toast(navigator.onLine === false ? t('tool.snapFail') : t('tool.snapErr', { e: (e && e.message) || '' }), 7000);
     });
   }
   // one request to the public OSRM server. "No road matches here" is an answer, not a failure: those samples stay
   // as recorded. The server allows about one request a second, so a busy answer waits and tries again.
+  var matchMax = 90; // points per request; lowered by itself if the server says TooBig
   var matchNoRad = false; // the server refused our search radius once: leave it to the server's default from then on
   function matchChunk(ch, withRadius, tries) {
     var url = OSRM_MATCH + ch.map(function (p) { return p[1].toFixed(6) + ',' + p[0].toFixed(6); }).join(';') +
@@ -1379,7 +1382,7 @@
         if (j.code === 'NoMatch' || j.code === 'NoSegment') return { tracepoints: [], matchings: [] };
         if (withRadius && (j.code === 'InvalidValue' || j.code === 'InvalidOptions' || j.code === 'InvalidQuery')) { matchNoRad = true; return matchChunk(ch, false, 0); }
         if ((r.status === 429 || r.status >= 500) && tries < 2) return matchChunk(ch, withRadius, tries + 1);
-        throw new Error((j.code || r.status) + (j.message ? ': ' + j.message : ''));
+        var err = new Error((j.code || r.status) + (j.message ? ': ' + j.message : '')); err.code = j.code; throw err;
       });
     });
   }
