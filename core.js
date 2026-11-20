@@ -527,12 +527,27 @@
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
   }
   function sortedPoints(stage) { return (stage.points || []).slice().sort(function (a, b) { return a.d - b.d; }); }
+  // Line colour for the apps that read one. GPX has no colour of its own, so it goes in three common extensions:
+  // GPX Style (gpx.studio and others), OsmAnd, and Garmin (16 named colours only, the nearest one is used).
+  var GARMIN = { Black: [0, 0, 0], DarkRed: [139, 0, 0], DarkGreen: [0, 100, 0], DarkYellow: [139, 139, 0], DarkBlue: [0, 0, 139], DarkMagenta: [139, 0, 139],
+    DarkCyan: [0, 139, 139], LightGray: [211, 211, 211], DarkGray: [169, 169, 169], Red: [255, 0, 0], Green: [0, 255, 0], Yellow: [255, 255, 0],
+    Blue: [0, 0, 255], Magenta: [255, 0, 255], Cyan: [0, 255, 255], White: [255, 255, 255] };
+  function trkColor(hex) {
+    var h = String(hex || '').replace('#', '').toUpperCase(); if (!/^[0-9A-F]{6}$/.test(h)) return '';
+    var rgb = [0, 2, 4].map(function (i) { return parseInt(h.substr(i, 2), 16); }), best = 'Red', bd = 1e9;
+    // compare the hue (each colour scaled to its brightest channel), so a deep blue picks Blue, not DarkCyan
+    var nm = function (v) { var m = Math.max(v[0], v[1], v[2]) || 1; return v.map(function (x) { return x / m; }); }, q = nm(rgb);
+    Object.keys(GARMIN).forEach(function (n) { if (/^Dark|Gray|Black|White/.test(n)) return; var g = nm(GARMIN[n]), d = Math.pow(g[0] - q[0], 2) + Math.pow(g[1] - q[1], 2) + Math.pow(g[2] - q[2], 2); if (d < bd) { bd = d; best = n; } });
+    return '<extensions><gpx_style:line><gpx_style:color>' + h + '</gpx_style:color><gpx_style:width>4</gpx_style:width></gpx_style:line>' +
+      '<osmand:color>#FF' + h + '</osmand:color><gpxx:TrackExtension><gpxx:DisplayColor>' + best + '</gpxx:DisplayColor></gpxx:TrackExtension></extensions>';
+  }
   var ZONE_WORDS = { SVCIN: 'SERVICE IN', SVCOUT: 'SERVICE OUT', PFIN: 'PARC FERME IN', PFOUT: 'PARC FERME OUT', RGIN: 'REGROUP IN', RGOUT: 'REGROUP OUT' };
   // opts.controlsOnly: waypoints only for control points (START, FINISH, TC, service, ...), no tulips
   // opts.numbered: track names get the running order in front ("01 HQ to SS1")
   function stageGPX(stages, opts) {
     opts = opts || {};
-    var s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rally Roadbook" xmlns="http://www.topografix.com/GPX/1/1">\n';
+    var s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rally Roadbook" xmlns="http://www.topografix.com/GPX/1/1"' +
+      (opts.colorOf ? ' xmlns:gpx_style="http://www.topografix.com/GPX/gpx_style/0/2" xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3" xmlns:osmand="https://osmand.net/docs/technical/osmand-file-formats/osmand-gpx"' : '') + '>\n';
     stages.forEach(function (st) {
       var f = st.factor || 1, isSS = !st.kind || st.kind === 'ss';
       var ss = isSS ? (/\bSS\s*\d+/i.exec(st.name || '') || [''])[0].replace(/\s+/g, '').toUpperCase() : '';
@@ -547,7 +562,7 @@
     });
     var w = String(stages.length).length < 2 ? 2 : String(stages.length).length;
     stages.forEach(function (st, k) {
-      s += '<trk><name>' + esc((opts.numbered ? ('000' + (k + 1)).slice(-w) + ' ' : '') + st.name) + '</name><trkseg>\n';
+      s += '<trk><name>' + esc((opts.numbered ? ('000' + (k + 1)).slice(-w) + ' ' : '') + st.name) + '</name>' + (opts.colorOf ? trkColor(opts.colorOf(st)) : '') + '<trkseg>\n';
       st.track.forEach(function (p) { s += '<trkpt lat="' + p[0] + '" lon="' + p[1] + '"/>\n'; });
       s += '</trkseg></trk>\n';
     });

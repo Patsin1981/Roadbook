@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.3.0';
+  var APP_VER = '2.3.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1858,7 +1858,7 @@
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
       if (!list) return;
-      download(safeName(P.name) + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true }), 'application/gpx+xml');
+      download(safeName(P.name) + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true, colorOf: stageColor }), 'application/gpx+xml');
     });
   };
   $('bSortStages').onclick = function () { sortStagesAsk(false); };
