@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.2.0';
+  var APP_VER = '2.2.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1326,9 +1326,7 @@
     var outPts = [], matched = 0;
     var run = chunks.reduce(function (pr, ch) {
       return pr.then(function () {
-        var url = OSRM_MATCH + ch.map(function (p) { return p[1].toFixed(6) + ',' + p[0].toFixed(6); }).join(';') +
-          '?geometries=geojson&overview=full&gaps=ignore&tidy=true&radiuses=' + ch.map(function () { return 25; }).join(';');
-        return fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (j) {
+        return matchChunk(ch, !matchNoRad, 0).then(function (j) {
           var tps = j.tracepoints || [], ms = j.matchings || [], used = {};
           // walk the samples in order: a matched sample brings its whole matched road once, an unmatched one stays as recorded
           var mi = ch.map(function (p, k) { return tps[k] ? tps[k].matchings_index : -1; });
@@ -1357,13 +1355,33 @@
       L.polyline(tr, { color: '#fff', weight: 9, interactive: false }).addTo(gEdit);
       L.polyline(tr, { color: '#0B8A3A', weight: 5, interactive: false }).addTo(gEdit);
       var len = 0; for (var k = 1; k < tr.length; k++) len += RB.hav(tr[k - 1], tr[k]);
-      var pct = Math.round(matched / samp.length * 100);
+      var pct = Math.min(100, Math.round(matched / samp.length * 100)); // chunks share one sample at each joint
       var close = function () { gEdit.clearLayers(); toolBar(null); toolMode(false); };
       toolBar(t('tool.snapPreview'), t('tool.snapStats', { pct: pct, a: (L0 / 1000).toFixed(3), b: (len / 1000).toFixed(3) }), [
         { label: t('common.cancel'), fn: close },
         { label: t('tool.snapUse'), cls: 'primary', fn: function () { close(); setTrack(st, tr, true); toast(t('tool.snapDone'), 4000); } }
       ]);
-    }).catch(function () { toast(t('tool.snapFail'), 5000); });
+    }).catch(function (e) {
+      $('toast').hidden = true;
+      toast(navigator.onLine === false ? t('tool.snapFail') : t('tool.snapErr', { e: (e && e.message) || '' }), 7000);
+    });
+  }
+  // one request to the public OSRM server. "No road matches here" is an answer, not a failure: those samples stay
+  // as recorded. The server allows about one request a second, so a busy answer waits and tries again.
+  var matchNoRad = false; // the server refused our search radius once: leave it to the server's default from then on
+  function matchChunk(ch, withRadius, tries) {
+    var url = OSRM_MATCH + ch.map(function (p) { return p[1].toFixed(6) + ',' + p[0].toFixed(6); }).join(';') +
+      '?geometries=geojson&overview=full&gaps=ignore&tidy=true' + (withRadius ? '&radiuses=' + ch.map(function () { return 25; }).join(';') : '');
+    var wait = function (ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); };
+    return wait(tries ? 1500 * tries : 1100).then(function () { return fetch(url); }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (j.code === 'Ok') return j;
+        if (j.code === 'NoMatch' || j.code === 'NoSegment') return { tracepoints: [], matchings: [] };
+        if (withRadius && (j.code === 'InvalidValue' || j.code === 'InvalidOptions' || j.code === 'InvalidQuery')) { matchNoRad = true; return matchChunk(ch, false, 0); }
+        if ((r.status === 429 || r.status >= 500) && tries < 2) return matchChunk(ch, withRadius, tries + 1);
+        throw new Error((j.code || r.status) + (j.message ? ': ' + j.message : ''));
+      });
+    });
   }
 
   // edit by hand: drag the dots on the line, tap a dot to remove it, tap the line to add one
