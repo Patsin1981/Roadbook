@@ -1,5 +1,5 @@
 /* Rally Roadbook service worker */
-var VER = '2.2.2';
+var VER = '2.2.3';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'i18n.js', 'symbols.js', 'overview.js', 'photos.js', 'export-xlsx.js', 'vendor/exceljs/exceljs.min.js', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png',
@@ -8,7 +8,9 @@ var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'i18n.js', 'sym
 var TILES = 'rb-tiles', TILE_MAX = 6000; // one tile cache for all versions, so maps saved for offline survive app updates
 
 self.addEventListener('install', function (e) {
-  e.waitUntil(caches.open(VER).then(function (c) { return c.addAll(SHELL); }));
+  // cache: 'reload' skips the browser's own HTTP cache (GitHub Pages keeps files 10 min), otherwise a new
+  // version could be stored with the old app files and the update would show the old version number
+  e.waitUntil(caches.open(VER).then(function (c) { return c.addAll(SHELL.map(function (u) { return new Request(u, { cache: 'reload' }); })); }));
 });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) {
