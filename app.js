@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.2.3';
+  var APP_VER = '2.3.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1478,9 +1478,11 @@
   }
   function safeName(s) { return String(s).replace(/[\\/:*?"<>|]+/g, '_').trim() || 'roadbook'; }
   function guessType(name) {
-    var n = (name || '').toUpperCase();
+    var n = (name || '').toUpperCase().trim();
+    var own = /#\d+\s+(.+)$/.exec(n); if (own) n = own[1]; // our own export: "SS6 บ้านหนองม่วง #8 TULIP" → the part after #8
+    if (/^TULIP\b/.test(n)) return 'TULIP';
     if (/FINISH|\bFIN\b|STOP/.test(n)) return 'FINISH';
-    if (/START|^SS\s*\d/.test(n)) return 'START';
+    if (/START|^SS\s*\d+$/.test(n)) return 'START'; // "SS3" alone is a start; "SS3 bridge" is just a note
     if (/\bTC/.test(n)) return 'TC'; if (/\bPC/.test(n)) return 'PC'; if (/\bCP/.test(n)) return 'CP';
     if (/DANGER|!/.test(n)) return 'DANGER';
     return 'INFO';
@@ -1493,6 +1495,8 @@
       var tr = RB.cleanTrack(tk.pts, 2);
       if (tr.length < 2) return;
       var st = addStage(tk.name || (base + (g.tracks.length > 1 ? ' ' + (i + 1) : '')), tr), cum = cumOf(st);
+      // "Free run SS1 to SS2", "HQ to SS1", "Liaison ..." are road sections, not special stages
+      if (tk.name && /free\s*run|liaison|\bto\b|\s(?:ไป)\s/i.test(tk.name) && !/^SS\s*\d+(?:\s+SS\s*\d+)*\s+(?!to\b)/i.test(tk.name)) st.kind = 'liaison';
       out.stages.push(st);
       g.waypoints.forEach(function (w) {
         if (!isFinite(w.lat) || !isFinite(w.lon)) return;
@@ -1850,7 +1854,58 @@
       .then(function () { btn.disabled = false; });
   }
   $('bXlsx').onclick = function () { exportXlsx(); };
-  $('bGpxOut').onclick = function () { if (!P.stages.length) return toast(t('err.noStage')); download(safeName(P.name) + '.gpx', RB.stageGPX(P.stages), 'application/gpx+xml'); };
+  $('bGpxOut').onclick = function () {
+    if (!P.stages.length) return toast(t('err.noStage'));
+    sortStagesAsk(true).then(function (list) {
+      if (!list) return;
+      download(safeName(P.name) + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true }), 'application/gpx+xml');
+    });
+  };
+  $('bSortStages').onclick = function () { sortStagesAsk(false); };
+
+  // ---------- Running order of the legs ----------
+  // From the SS numbers in the names: "SS3 ..." runs at 3, "Free run SS3 to SS4" just after SS3,
+  // "HQ to SS1" / "Service to SS3" just before the SS they go to. A leg without numbers follows the leg
+  // whose end is nearest its start. Equal places keep the order they have now.
+  function driveOrder(list) {
+    var num = function (x) { var m = /SS\s*(\d+)/i.exec(x || ''); return m ? +m[1] : null; };
+    var keyed = list.map(function (st, i) {
+      var n = st.name || '', parts = n.split(/\s+(?:to|ไป|→|->)\s+/i), k = null;
+      if (parts.length > 1) {
+        var a = num(parts[0]), b = num(parts.slice(1).join(' '));
+        k = a != null ? a + 0.5 : b != null ? b - 0.5 : null;
+      } else k = num(n);
+      return { st: st, i: i, k: k };
+    });
+    var withKey = keyed.filter(function (x) { return x.k != null; }).sort(function (a, b) { return a.k - b.k || a.i - b.i; });
+    var out = withKey.map(function (x) { return x.st; });
+    keyed.filter(function (x) { return x.k == null; }).forEach(function (x) {
+      var s0 = x.st.track[0], best = -1, bd = 2000; // within 2 km of the end of a leg already placed
+      out.forEach(function (o, j) { if (!s0 || !o.track.length) return; var d = RB.hav(o.track[o.track.length - 1], s0); if (d < bd) { bd = d; best = j; } });
+      if (best < 0) { // nothing ends near it: maybe it leads into a leg (a start before everything)
+        var e0 = x.st.track[x.st.track.length - 1], bi = -1, be = 2000;
+        out.forEach(function (o, j) { if (!e0 || !o.track.length) return; var d = RB.hav(e0, o.track[0]); if (d < be) { be = d; bi = j; } });
+        if (bi >= 0) return out.splice(bi, 0, x.st);
+        return out.push(x.st);
+      }
+      out.splice(best + 1, 0, x.st);
+    });
+    return out;
+  }
+  // shows the running order; resolves with the list to use (forExport: the file can use it without changing the project)
+  function sortStagesAsk(forExport) {
+    var list = driveOrder(P.stages), same = list.every(function (st, i) { return st === P.stages[i]; });
+    if (same) { if (!forExport) toast(t('order.same')); return Promise.resolve(list); }
+    var w = String(list.length).length < 2 ? 2 : String(list.length).length;
+    var body = list.map(function (st, i) { return ('000' + (i + 1)).slice(-w) + '  ' + st.name; }).join('\n');
+    var q = { title: t('order.title'), body: t('order.body') + '\n\n' + body, ok: t('order.ok') };
+    if (forExport) q.choices = [{ v: true, label: t('order.ok'), primary: true }, { v: 'alt', label: t('order.fileOnly') }];
+    return ask(q).then(function (r) {
+      if (!r) return null;
+      if (r === true) { P.stages = list; save(); renderAll(); toast(t('order.done')); }
+      return list;
+    });
+  }
   $('bLogOut').onclick = exportLog;
   $('projName').onchange = function () { P.name = this.value.trim() || P.name; save(); };
   $('bNewProj').onclick = function () {

@@ -527,16 +527,27 @@
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n');
   }
   function sortedPoints(stage) { return (stage.points || []).slice().sort(function (a, b) { return a.d - b.d; }); }
-  function stageGPX(stages) {
+  var ZONE_WORDS = { SVCIN: 'SERVICE IN', SVCOUT: 'SERVICE OUT', PFIN: 'PARC FERME IN', PFOUT: 'PARC FERME OUT', RGIN: 'REGROUP IN', RGOUT: 'REGROUP OUT' };
+  // opts.controlsOnly: waypoints only for control points (START, FINISH, TC, service, ...), no tulips
+  // opts.numbered: track names get the running order in front ("01 HQ to SS1")
+  function stageGPX(stages, opts) {
+    opts = opts || {};
     var s = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Rally Roadbook" xmlns="http://www.topografix.com/GPX/1/1">\n';
     stages.forEach(function (st) {
-      var f = st.factor || 1;
+      var f = st.factor || 1, isSS = !st.kind || st.kind === 'ss';
+      var ss = isSS ? (/\bSS\s*\d+/i.exec(st.name || '') || [''])[0].replace(/\s+/g, '').toUpperCase() : '';
       sortedPoints(st).forEach(function (p, i) {
-        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(st.name + ' #' + (i + 1) + ' ' + typeLabel(p)) + '</name><desc>' + esc((p.d * f / 1000).toFixed(3) + ' km ' + (p.time ? p.time + ' ' : '') + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
+        if (opts.controlsOnly && !isControl(p)) return;
+        var lbl = p.code || ZONE_WORDS[p.type] || typeLabel(p), nm = opts.controlsOnly
+          ? (ss ? (lbl.replace(/\s+/g, '').toUpperCase().indexOf(ss) < 0 ? ss + ' ' : '') + lbl // short: "SS6 START"
+            : !isSS && (!p.code || p.code === p.type) ? st.name + ' ' + lbl : lbl)                 // road section: "HQ to SS1 START" unless it has its own code
+          : st.name + ' #' + (i + 1) + ' ' + lbl;
+        s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(nm) + '</name><desc>' + esc(st.name + ' · ' + (p.d * f / 1000).toFixed(3) + ' km ' + (p.time ? p.time + ' ' : '') + (p.place ? p.place + ' ' : '') + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
       });
     });
-    stages.forEach(function (st) {
-      s += '<trk><name>' + esc(st.name) + '</name><trkseg>\n';
+    var w = String(stages.length).length < 2 ? 2 : String(stages.length).length;
+    stages.forEach(function (st, k) {
+      s += '<trk><name>' + esc((opts.numbered ? ('000' + (k + 1)).slice(-w) + ' ' : '') + st.name) + '</name><trkseg>\n';
       st.track.forEach(function (p) { s += '<trkpt lat="' + p[0] + '" lon="' + p[1] + '"/>\n'; });
       s += '</trkseg></trk>\n';
     });
