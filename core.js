@@ -324,11 +324,12 @@
         var lx0 = Math.max(-49 + bw2 / 2, Math.min(49 - bw2 / 2, k.x)); // a name board always stays inside the box
         s += '<g' + da + ' transform="translate(' + f1(lx0) + ',' + f1(k.y) + ')"><rect x="' + f1(-bw2 / 2) + '" y="' + f1(-bh2 / 2) + '" width="' + f1(bw2) + '" height="' + f1(bh2) + '" fill="#FFD400" stroke="#000" stroke-width="0.8"/>' +
           '<text x="0" y="' + f1(bh2 * 0.26) + '" font-family="Arial,sans-serif" font-weight="700" font-size="' + f1(bh2 * 0.72) + '" textLength="' + f1(bw2 - 4) + '" lengthAdjust="spacingAndGlyphs" text-anchor="middle" fill="#000">' + txt + '</text></g>';
-      } else if (SYM && SYM[k.id]) {
-        s += '<g' + da + ' transform="translate(' + f1(k.x - z / 2) + ',' + f1(k.y - z / 2) + ') scale(' + (z / 100).toFixed(3) + ')">' + SYM[k.id].svg + '</g>';
+      } else if ((SYM && SYM[k.id]) || MY[k.id]) {
+        s += '<g' + da + ' transform="translate(' + f1(k.x - z / 2) + ',' + f1(k.y - z / 2) + ') scale(' + (z / 100).toFixed(3) + ')">' + (MY[k.id] || SYM[k.id]).svg + '</g>';
       } else return;
       if (opts.interactive && opts.selStk === i) s += '<rect x="' + f1((k.id === 'label' ? lx0 : k.x) - bw2 / 2 - 1.5) + '" y="' + f1(k.y - bh2 / 2 - 1.5) + '" width="' + f1(bw2 + 3) + '" height="' + f1(bh2 + 3) + '" fill="none" stroke="#0050B3" stroke-width="1.2" stroke-dasharray="2 1.5"/>';
     });
+    if (opts.draw && opts.draw.length) s += strokesSVG(opts.draw, ink, f1(Math.max(1.6, w * 0.5)), f1(w)); // drawn by hand, on top
     return s + '</svg>';
   }
   // leader direction: the usual lower-left (lower-right for left turns) unless a road is in the way, then the widest free gap
@@ -396,11 +397,36 @@
   function setRef(on) { REF = !!on; }
   var LINE_W = 4.5; // thickness of the route line on tulips (setting); the arrow head keeps its size
   function setLineW(w) { w = parseFloat(w); LINE_W = w > 1 && w < 10 ? w : 4.5; }
+  // hand drawing: strokes [{w: 'n' (thin, like a side road) | 'k' (thick, like the route), p: [[x, y], ...]}]
+  // smoothed through the midpoints so a shaky finger still prints clean
+  function strokePath(p) {
+    if (!p || !p.length) return '';
+    var f = function (v) { return (+v).toFixed(1); };
+    if (p.length === 1) return 'M' + f(p[0][0]) + ',' + f(p[0][1]) + ' l0.01,0';
+    if (p.length === 2) return 'M' + f(p[0][0]) + ',' + f(p[0][1]) + ' L' + f(p[1][0]) + ',' + f(p[1][1]);
+    var d = 'M' + f(p[0][0]) + ',' + f(p[0][1]);
+    for (var i = 1; i < p.length - 1; i++) d += ' Q' + f(p[i][0]) + ',' + f(p[i][1]) + ' ' + f((p[i][0] + p[i + 1][0]) / 2) + ',' + f((p[i][1] + p[i + 1][1]) / 2);
+    return d + ' L' + f(p[p.length - 1][0]) + ',' + f(p[p.length - 1][1]);
+  }
+  function strokesSVG(list, ink, wn, wk) {
+    return (list || []).map(function (s) {
+      return '<path d="' + strokePath(s.p) + '" fill="none" stroke="' + ink + '" stroke-width="' + (s.w === 'k' ? wk : wn) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+    }).join('');
+  }
+  // the user's own symbols (drawn once, kept in the project), used like the built-in signs
+  var MY = {};
+  function setMySym(list) {
+    MY = {};
+    (list || []).forEach(function (m) { MY[m.id] = { name: m.name, svg: strokesSVG(m.strokes, '#000', 11, 22) }; });
+  }
+  function mySymSVG(id, size) { var m = MY[id]; return m ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="' + size + '" height="' + size + '">' + m.svg + '</svg>' : ''; }
+  // warning marks ! / !! / !!!: a danger box has its own level, any other box may carry one too
+  function warnOf(p) { return p ? (p.type === 'DANGER' ? (p.danger || 1) : (p.warn || 0)) : 0; }
   function tulipOf(p, opts) {
     opts = Object.assign({ ref: REF }, opts || {}, {
       round: !!p.round, gravel: p.road === 'gravel', curve: p.curve || 'sharp',
       shape: p.curve === 'gps' && p.shape ? p.shape.pts : null, shapeAt: p.shape ? p.shape.at : 0,
-      side: p.curve === 'gps' && p.shape ? p.shape.side : null, bopt: p.bopt, stk: p.stk,
+      side: p.curve === 'gps' && p.shape ? p.shape.side : null, bopt: p.bopt, stk: p.stk, draw: opts && opts.noDraw ? null : p.draw,
       lead: typeof p.lead === 'number' ? p.lead : 'auto', bar: isControl(p)
     });
     return tulipSVG(p.angle, p.branches, opts);
@@ -626,7 +652,7 @@
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, stageKML: stageKML, thinTrack: thin, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
-    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, setLineW: setLineW, roadShape: roadShape, shapeXY: shapeXY, parseKML: parseKML
+    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, setLineW: setLineW, setMySym: setMySym, mySymSVG: mySymSVG, strokesSVG: strokesSVG, warnOf: warnOf, lineW: function () { return LINE_W; }, roadShape: roadShape, shapeXY: shapeXY, parseKML: parseKML
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);

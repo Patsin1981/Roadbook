@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.4.1';
+  var APP_VER = '2.5.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -500,6 +500,10 @@
 
   // ---------- Roadbook list ----------
   function tagHTML(p) {
+    var w = p.type !== 'DANGER' && p.warn ? '<span class="tag WARN">' + '!'.repeat(p.warn) + '</span>' : '';
+    return w + tagMain(p);
+  }
+  function tagMain(p) {
     if (p.type === 'TULIP') return '';
     if (p.type === 'DANGER') return '<span class="tag DANGER">' + t('type.danger') + ' ' + '!'.repeat(p.danger || 1) + '</span>';
     var txt = RB.isControl(p) ? (p.code || p.type) + (p.time ? '  ' + p.time : '') : typeName(p.type);
@@ -700,7 +704,7 @@
       '<button type="button" data-a="none" title="' + t('pt.noArrow') + '">' + RB.tulipSVG(null, [], { size: 40, stroke: 7 }) + '</button>';
     $('ptBranches').innerHTML = BRANCH_SET.map(function (a) { return '<button type="button" data-b="' + a + '" aria-label="' + a + '°">' + RB.tulipSVG(null, [a], { size: 28, stroke: 7 }) + '</button>'; }).join('');
     var groups = [['ctrl', t('sym.gCtrl')], ['road', t('sym.gRoad')], ['sign', t('sym.gSign')], ['mark', t('sym.gMark')]];
-    $('ptStkPick').innerHTML = '<button type="button" data-stk-add="label" class="stk-label"><span class="lbl-board">ABC</span><span>' + t('stk.label') + '</span></button>' +
+    stkPickBase = '<button type="button" data-stk-add="label" class="stk-label"><span class="lbl-board">ABC</span><span>' + t('stk.label') + '</span></button>' +
       RBS.LIST.map(function (x) { return '<button type="button" data-stk-add="' + x.id + '">' + RBS.svg(x.id, 30) + '<span>' + RB.esc(LANG === 'th' ? x.th : x.en) + '</span></button>'; }).join('');
     $('ptSyms').innerHTML = groups.map(function (g) {
       return '<h4>' + g[1] + '</h4><div class="symgrid">' + RBS.LIST.filter(function (x) { return x.g === g[0]; }).map(function (x) {
@@ -717,7 +721,12 @@
       if (!RB.isControl(D) && DautoCode) { D.code = ''; }
       syncDlg();
     };
-    $('ptDanger').onclick = function (e) { var b = e.target.closest('[data-lv]'); if (b) { D.danger = +b.dataset.lv; syncDlg(); } };
+    $('ptDanger').onclick = function (e) {
+      var b = e.target.closest('[data-lv]'); if (!b) return;
+      var lv = +b.dataset.lv;
+      if (D.type === 'DANGER') D.danger = Math.max(1, lv); else if (lv) D.warn = lv; else delete D.warn;
+      syncDlg();
+    };
     $('ptPresets').onclick = function (e) {
       var b = e.target.closest('[data-a]'); if (!b) return;
       var oldPre = RB.nearestPreset(D.angle);
@@ -799,7 +808,140 @@
     syncDlg();
   };
   function renderStkCtl() { $('ptStkCtl').hidden = !(D.stk && D.stk[Dsel]); }
-  $('ptStkAdd').onclick = function () { var pk = $('ptStkPick'); pk.hidden = !pk.hidden; };
+  $('ptStkAdd').onclick = function () { var pk = $('ptStkPick'); if (pk.hidden) stkPickFill(); pk.hidden = !pk.hidden; };
+  // the user's own symbols first (long-press / right-click deletes one), then the built-in ones
+  function stkPickFill() {
+    var mine = (P.mySym || []).map(function (m) { return '<button type="button" class="mine" data-stk-add="' + m.id + '" data-mine="1">' + RB.mySymSVG(m.id, 30) + '<span>' + RB.esc(m.name) + '</span></button>'; }).join('');
+    $('ptStkPick').innerHTML = mine + (stkPickBase || '') + (mine ? '<p class="note" style="grid-column:1/-1">' + t('stk.delHint') + '</p>' : '');
+  }
+  var stkPickBase; // built-in part of the picker, filled when the language is set
+
+  // ---------- Hand drawing on the tulip (full screen, finger or mouse) ----------
+  // Strokes live with the box as D.draw = [{w: 'n' | 'k', p: [[x, y], ...]}] in tulip units (-50..50),
+  // so they come out on screen, in the Excel roadbook and in exported pictures, and survive re-exports.
+  var PD = null, padPen = 'n'; // the pen last used is offered first next time
+  function padOpen() {
+    if (!D) return;
+    PD = { strokes: JSON.parse(JSON.stringify(D.draw || [])), hist: [], tool: padPen, pen: padPen, cur: null, changed: false };
+    $('pad').showModal(); padSize(); padTools(); padRender();
+  }
+  function padSize() {
+    if (!PD) return;
+    var a = $('padArea'), z = Math.floor(Math.min(a.clientWidth, a.clientHeight));
+    a.style.setProperty('--pz', z + 'px');
+    $('padBg').innerHTML = RB.tulipOf(D, { size: z, ink: '#000', noDraw: true });
+  }
+  window.addEventListener('resize', padSize);
+  function padTools() {
+    $('padTool').querySelectorAll('[data-tool]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.tool === PD.tool); });
+    $('padSvg').classList.toggle('erase', PD.tool === 'erase');
+  }
+  function padRender() {
+    var w = RB.lineW(), list = PD.cur ? PD.strokes.concat([PD.cur]) : PD.strokes;
+    $('padSvg').innerHTML = RB.strokesSVG(list, '#000', Math.max(1.6, w * 0.5).toFixed(1), w.toFixed(1));
+  }
+  function padPt(e) {
+    var r = $('padSvg').getBoundingClientRect();
+    return [+(((e.clientX - r.left) / r.width) * 100 - 50).toFixed(1), +(((e.clientY - r.top) / r.height) * 100 - 50).toFixed(1)];
+  }
+  function padKeep() { PD.hist.push(JSON.stringify(PD.strokes)); if (PD.hist.length > 60) PD.hist.shift(); PD.changed = true; }
+  function padThin(p, tol) { // drop points that sit on the line between their neighbours
+    if (p.length < 3) return p;
+    var keep = [p[0]], last = p[0];
+    for (var i = 1; i < p.length - 1; i++) {
+      var a = last, b = p[i + 1], q = p[i], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+      if (Math.abs((q[0] - a[0]) * dy - (q[1] - a[1]) * dx) / L > tol) { keep.push(q); last = q; }
+    }
+    keep.push(p[p.length - 1]); return keep;
+  }
+  function padHit(pt) { // the stroke nearest the point, within reach of a fingertip
+    var best = -1, bd = 4;
+    PD.strokes.forEach(function (st, i) {
+      for (var k = 0; k < st.p.length; k++) {
+        var a = st.p[k], b = st.p[k + 1] || a, dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+        var tt = L2 ? Math.max(0, Math.min(1, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / L2)) : 0;
+        var d = Math.hypot(pt[0] - a[0] - tt * dx, pt[1] - a[1] - tt * dy);
+        if (d < bd) { bd = d; best = i; }
+      }
+    });
+    return best;
+  }
+  (function wirePad() {
+    var svg = $('padSvg'), down = false;
+    svg.addEventListener('pointerdown', function (e) {
+      if (!PD) return;
+      e.preventDefault(); down = true; try { svg.setPointerCapture(e.pointerId); } catch (x) {}
+      var p = padPt(e);
+      if (PD.tool === 'erase') { var h = padHit(p); if (h >= 0) { padKeep(); PD.strokes.splice(h, 1); padRender(); } return; }
+      PD.cur = { w: PD.tool === 'line' ? PD.pen : PD.tool, p: [p] };
+      if (PD.tool === 'line') PD.cur.p.push(p);
+      padRender();
+    });
+    svg.addEventListener('pointermove', function (e) {
+      if (!PD || !down) return;
+      var p = padPt(e);
+      if (PD.tool === 'erase') { var h = padHit(p); if (h >= 0) { padKeep(); PD.strokes.splice(h, 1); padRender(); } return; }
+      if (!PD.cur) return;
+      if (PD.tool === 'line') PD.cur.p[1] = p;
+      else { var l = PD.cur.p[PD.cur.p.length - 1]; if (Math.hypot(p[0] - l[0], p[1] - l[1]) < 0.8) return; PD.cur.p.push(p); }
+      padRender();
+    });
+    var up = function () {
+      if (!PD || !down) return;
+      down = false;
+      if (PD.cur) {
+        var c = PD.cur; PD.cur = null;
+        if (PD.tool !== 'line') c.p = padThin(c.p, 0.35);
+        if (PD.tool !== 'line' || Math.hypot(c.p[1][0] - c.p[0][0], c.p[1][1] - c.p[0][1]) > 1) { padKeep(); PD.strokes.push(c); }
+        padRender();
+      }
+    };
+    svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+    $('padTool').onclick = function (e) {
+      var b = e.target.closest('[data-tool]'); if (!b || !PD) return;
+      PD.tool = b.dataset.tool; if (PD.tool === 'n' || PD.tool === 'k') PD.pen = padPen = PD.tool;
+      padTools();
+    };
+    $('padUndo').onclick = function () { if (PD && PD.hist.length) { PD.strokes = JSON.parse(PD.hist.pop()); padRender(); } };
+    $('padClear').onclick = function () { if (PD && PD.strokes.length) { padKeep(); PD.strokes = []; padRender(); } };
+    $('padDone').onclick = function () {
+      if (!PD) return;
+      if (PD.strokes.length) D.draw = PD.strokes; else delete D.draw;
+      $('pad').close(); PD = null; syncDlg();
+    };
+    $('padCancel').onclick = function () {
+      if (!PD) return;
+      var close = function () { $('pad').close(); PD = null; };
+      if (!PD.changed) return close();
+      ask({ title: t('pad.discard'), ok: t('pad.discardOk'), cancel: t('pad.keep'), danger: true }).then(function (ok) { if (ok) close(); });
+    };
+    // keep what was drawn as one of the user's own symbols, fitted into the 0..100 symbol box
+    $('padSave').onclick = function () {
+      if (!PD) return;
+      if (!PD.strokes.length) return toast(t('pad.empty'));
+      ask({ title: t('pad.save'), input: '', label: t('pad.saveAsk') }).then(function (name) {
+        if (!name || !name.trim()) return;
+        var xs = [], ys = [];
+        PD.strokes.forEach(function (st) { st.p.forEach(function (q) { xs.push(q[0]); ys.push(q[1]); }); });
+        var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+        var k = 80 / Math.max(x1 - x0, y1 - y0, 8), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        var strokes = PD.strokes.map(function (st) { return { w: st.w, p: st.p.map(function (q) { return [+(50 + (q[0] - cx) * k).toFixed(1), +(50 + (q[1] - cy) * k).toFixed(1)]; }) }; });
+        P.mySym = (P.mySym || []).concat([{ id: 'my' + uid(), name: name.trim(), strokes: strokes }]);
+        RB.setMySym(P.mySym); save(); toast(t('pad.saved', { n: name.trim() }), 4000);
+      });
+    };
+  })();
+  $('ptDraw').onclick = padOpen;
+  $('pad').addEventListener('cancel', function (e) { e.preventDefault(); $('padCancel').click(); }); // Esc / back = Cancel
+  $('ptStkPick').oncontextmenu = function (e) {
+    var b = e.target.closest('[data-mine]'); if (!b) return;
+    e.preventDefault();
+    var id = b.dataset.stkAdd, m = (P.mySym || []).filter(function (x) { return x.id === id; })[0]; if (!m) return;
+    ask({ title: t('stk.delMine', { n: m.name }), body: t('stk.delMineBody'), ok: t('common.delete'), danger: true }).then(function (ok) {
+      if (!ok) return;
+      P.mySym = P.mySym.filter(function (x) { return x !== m; }); RB.setMySym(P.mySym); save(); stkPickFill(); syncDlg();
+    });
+  };
   $('ptStkPick').onclick = function (e) {
     var b = e.target.closest('[data-stk-add]'); if (!b || !D) return;
     var add = function (k) { D.stk = (D.stk || []).concat([k]); Dsel = D.stk.length - 1; $('ptStkPick').hidden = true; syncDlg(); };
@@ -900,7 +1042,7 @@
   $('ptOsm').onclick = fetchSideRoads;
   $('ptOsmClear').onclick = function () { if (!D) return; delete D.osm; if (D.shape) delete D.shape.side; $('ptOsmMsg').textContent = ''; syncDlg(); };
   function openPoint(p, isNew) {
-    Dsel = -1; drag = null; $('ptStkPick').hidden = true; $('ptOsmMsg').textContent = '';
+    Dsel = -1; drag = null; $('ptStkPick').hidden = true; $('ptOsmMsg').textContent = ''; if ($('pad').open) $('pad').close(); PD = null;
     Dorig = p; Dnew = isNew; D = JSON.parse(JSON.stringify(p)); D.branches = D.branches || []; D.code = D.code || ''; D.time = D.time || '';
     DautoCode = isNew && !!D.code;
     $('ptTh').value = D.th || ''; $('ptEn').value = D.en || ''; $('ptNote').value = D.note || ''; $('ptPlace').value = D.place || '';
@@ -921,8 +1063,8 @@
     document.querySelectorAll('#ptTypes [data-type]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.type === D.type); });
     $('ptCtrl').hidden = !RB.isControl(D);
     $('ptCode').value = D.code || ''; $('ptTime').value = D.time || '';
-    $('ptDanger').hidden = D.type !== 'DANGER';
-    document.querySelectorAll('#ptDanger [data-lv]').forEach(function (b) { b.setAttribute('aria-pressed', +b.dataset.lv === (D.danger || 1)); });
+    $('ptDanger').hidden = false; $('ptLv0').hidden = D.type === 'DANGER'; // any box can carry ! / !! / !!!
+    document.querySelectorAll('#ptDanger [data-lv]').forEach(function (b) { b.setAttribute('aria-pressed', +b.dataset.lv === RB.warnOf(D)); });
     document.querySelectorAll('#ptPresets [data-a]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.a === 'none' ? D.angle == null : +b.dataset.a === D.angle); });
     document.querySelectorAll('#ptBranches [data-b]').forEach(function (b) { b.setAttribute('aria-pressed', D.branches.indexOf(+b.dataset.b) >= 0); });
     if (!fromSlider) $('ptAngle').value = D.angle == null ? 0 : D.angle;
@@ -2206,6 +2348,8 @@
         // nearest threshold = loudest; the box flashes on the last one
         var lvl = Math.min(3, A.length - i), close = i === A.length - 1;
         beep([800, 1100, 1400][lvl - 1], lvl);
+        var wl = RB.warnOf(s.next); // ! / !! / !!!: as many fast high beeps after the usual ones
+        if (wl && (close || i === 0)) setTimeout(function () { beep(1900, wl); }, lvl * 220 + 180);
         if (CFG.vib && navigator.vibrate) navigator.vibrate(lvl === 3 ? [200, 80, 200, 80, 200] : lvl === 2 ? [150, 80, 150] : [150]);
         var box = $('dNext'); box.classList.remove('flash'); void box.offsetWidth; if (close) box.classList.add('flash');
         break;
@@ -2515,6 +2659,7 @@
 
   // ---------- Render all ----------
   function renderAll() {
+    RB.setMySym(P.mySym);
     $('projName').value = P.name || '';
     $('storeNote').textContent = store.mem ? t('file.storeMem') : t('file.storeOk');
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();

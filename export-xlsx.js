@@ -271,7 +271,7 @@
         var code = p.code || (ctx.isControl(p) ? p.type : '');
         // don't repeat the code when the instruction already says it (e.g. code START, text "START SS1")
         if (code && main && main.toUpperCase().indexOf(code.toUpperCase()) >= 0) code = '';
-        var head = (p.type === 'DANGER' ? '!'.repeat(p.danger || 1) + ' ' : '') + code;
+        var wl = p.type === 'DANGER' ? (p.danger || 1) : (p.warn || 0), head = (wl ? '!'.repeat(wl) + ' ' : '') + code;
         if (head.trim() || p.time) lines.push((head.trim() + (p.time ? '  ' + p.time : '')).trim());
         if (p.place) lines.push(p.place);
         if (main) lines.push(main);

@@ -190,6 +190,7 @@
     </div>
     <div class="danger-lv" id="ptDanger" hidden>
       <span data-i18n="pt.dangerLv"></span>
+      <button type="button" data-lv="0" id="ptLv0">—</button>
       <button type="button" data-lv="1">!</button>
       <button type="button" data-lv="2">!!</button>
       <button type="button" data-lv="3">!!!</button>
@@ -235,6 +236,7 @@
     </div>
     <div class="opt-row"><span class="opt-lbl" data-i18n="pt.stk"></span>
       <button type="button" id="ptStkAdd" data-i18n="stk.add"></button>
+      <button type="button" id="ptDraw" data-i18n="pad.open"></button>
       <span class="stk-ctl" id="ptStkCtl" hidden><button type="button" data-z="-3">−</button><button type="button" data-z="3">+</button><button type="button" id="ptStkDel" class="danger-btn" data-i18n="common.delete"></button></span>
     </div>
     <div class="stkpick" id="ptStkPick" hidden></div>
@@ -289,6 +291,22 @@
 </dialog>
 
 <!-- In-app question / confirmation (replaces the browser's own boxes) -->
+<dialog id="pad" class="pad" aria-labelledby="padTitle">
+  <div class="pad-top">
+    <b id="padTitle" data-i18n="pad.title"></b>
+    <div class="seg" id="padTool" role="group">
+      <button type="button" data-tool="n" data-i18n="pad.thin"></button><button type="button" data-tool="k" data-i18n="pad.thick"></button>
+      <button type="button" data-tool="line" data-i18n="pad.line"></button><button type="button" data-tool="erase" data-i18n="pad.erase"></button>
+    </div>
+  </div>
+  <div class="pad-area" id="padArea"><div id="padBg"></div><svg id="padSvg" viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <div class="pad-bot">
+    <button type="button" id="padUndo" data-i18n="pad.undo"></button><button type="button" id="padClear" data-i18n="pad.clear"></button>
+    <button type="button" id="padSave" data-i18n="pad.save"></button>
+    <span class="sp"></span>
+    <button type="button" id="padCancel" data-i18n="common.cancel"></button><button type="button" id="padDone" class="primary" data-i18n="pad.done"></button>
+  </div>
+</dialog>
 <dialog id="askDlg">
   <form method="dialog" class="dlg ask">
     <h3 id="askTitle"></h3>

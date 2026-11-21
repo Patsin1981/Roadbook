@@ -370,3 +370,21 @@ body.night #stageSel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .stkpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:5px;max-height:260px;overflow:auto;border:1.5px solid var(--ink);padding:6px}
 .stkpick button{min-height:58px;padding:3px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;line-height:1.1;background:#fff;color:#000}
 .stkpick .lbl-board{background:#FFD400;border:1.5px solid #000;font:700 12px Arial,sans-serif;padding:2px 5px}
+
+/* hand drawing pad (v2.5) */
+.pad{width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;box-sizing:border-box;background:var(--paper);color:var(--ink);flex-direction:column;
+  padding:max(8px,env(safe-area-inset-top)) 10px max(8px,env(safe-area-inset-bottom))}
+.pad[open]{display:flex}
+.pad-top,.pad-bot{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pad-top b{font-size:18px;margin-right:auto}
+.pad-top .seg button{min-width:58px}
+.pad-bot .sp{flex:1}
+.pad-bot button{min-height:46px;padding:0 12px}
+.pad-area{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;margin:8px 0}
+.pad-area #padBg,.pad-area svg{position:absolute;width:var(--pz);height:var(--pz)}
+.pad-area #padBg svg{width:100%;height:100%;position:static}
+#padBg{background:#fff;border:1.5px solid #000;box-sizing:border-box}
+#padSvg{touch-action:none;cursor:crosshair}
+#padSvg.erase{cursor:pointer}
+.stkpick .mine{border-color:#0050B3}
+.tag.WARN{background:#D0021B;color:#fff}
