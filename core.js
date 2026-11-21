@@ -215,7 +215,7 @@
   //   ref: measuring-point marker, lead: 'auto' | bearing of the marker, bar: line across the road (controls)
   function tulipSVG(angle, branches, opts) {
     opts = opts || {};
-    var size = opts.size || 64, ink = opts.ink || '#000', w = opts.stroke || 6;
+    var size = opts.size || 64, ink = opts.ink || '#000', w = opts.stroke || LINE_W;
     var dash = opts.gravel ? ' stroke-dasharray="' + (w * 1.6).toFixed(1) + ' ' + (w * 1.3).toFixed(1) + '"' : '';
     var f1 = function (v) { return (+v).toFixed(1); };
     var line = function (d) { return '<path d="' + d + '" fill="none" stroke="' + ink + '" stroke-width="' + w + '" stroke-linecap="' + (dash ? 'butt' : 'round') + '" stroke-linejoin="round"' + dash + '/>'; };
@@ -394,6 +394,8 @@
   }
   var REF = true; // measuring-point marker on roadbook tulips (setting)
   function setRef(on) { REF = !!on; }
+  var LINE_W = 4.5; // thickness of the route line on tulips (setting); the arrow head keeps its size
+  function setLineW(w) { w = parseFloat(w); LINE_W = w > 1 && w < 10 ? w : 4.5; }
   function tulipOf(p, opts) {
     opts = Object.assign({ ref: REF }, opts || {}, {
       round: !!p.round, gravel: p.road === 'gravel', curve: p.curve || 'sharp',
@@ -624,7 +626,7 @@
     PRESETS: PRESETS, nearestPreset: nearestPreset, tulipSVG: tulipSVG, tulipOf: tulipOf, tsdIdeal: tsdIdeal, tsdSpeedAt: tsdSpeedAt,
     Matcher: Matcher, stageCSV: stageCSV, stageGPX: stageGPX, stageKML: stageKML, thinTrack: thin, logGPX: logGPX, sortedPoints: sortedPoints,
     typeLabel: typeLabel, esc: esc, isControl: isControl, suggestCode: suggestCode, trimStage: trimStage, CONTROL_TYPES: CONTROL_TYPES,
-    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, roadShape: roadShape, shapeXY: shapeXY, parseKML: parseKML
+    ZONE_CODES: ZONE_CODES, sliceStage: sliceStage, planSplit: planSplit, setRef: setRef, setLineW: setLineW, roadShape: roadShape, shapeXY: shapeXY, parseKML: parseKML
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
 })(this);

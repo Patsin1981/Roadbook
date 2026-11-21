@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.4.0';
+  var APP_VER = '2.4.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -29,7 +29,7 @@
     lang: null, night: 'off', navDec: 2, alerts: [300, 100, 50], sound: true, vib: true, map: true, rec: true,
     offRoute: 40, navAcc: 50, recAcc: 30, markFx: true, layer: 'osm', drawSnap: true,
     clockOffset: 0, tsdFmt: 's', partial: 'point', hold: true, backup: true,
-    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, curve: 'sharp', navApp: 'gmaps',
+    paper: 'A5', coordFmt: 'ddm', xlPhotos: true, refMark: true, lineW: '4.5', curve: 'sharp', navApp: 'gmaps',
     theme: 'royal'
   };
   var CFG = (function () {
@@ -1751,7 +1751,7 @@
   }
   function tulipPng(p) {
     return new Promise(function (resolve) {
-      var size = 300, svg = RB.tulipOf(p, { size: size, ink: '#000', stroke: 6 });
+      var size = 300, svg = RB.tulipOf(p, { size: size, ink: '#000' });
       var img = new Image();
       img.onload = function () {
         var c = document.createElement('canvas'); c.width = c.height = size;
@@ -1777,7 +1777,7 @@
       };
       img.onload = function () { g.drawImage(img, (w - sz) / 2 * k, (h - sz) / 2 * k - 6 * k, sz * k, sz * k); fin(); };
       img.onerror = fin;
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(RB.tulipOf(p, { size: 300, ink: '#000', stroke: 6 }));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(RB.tulipOf(p, { size: 300, ink: '#000' }));
     });
   }
   // small lines of bold text as a transparent picture (Excel "Next" note under Partial)
@@ -2383,6 +2383,7 @@
         rowH(t('set.paper'), segH('paper', [['A5', 'A5'], ['A4', 'A4']])) +
         rowH(t('set.coordFmt'), segH('coordFmt', [['ddm', "N 15° 30.123'"], ['dec', '15.502050']])) +
         rowH(t('set.curve'), segH('curve', [['sharp', t('curve.sharp')], ['soft', t('curve.soft')], ['wide', t('curve.wide')], ['gps', t('curve.gps')]])) +
+        rowH(t('set.lineW'), segH('lineW', [['6', t('lineW.thick')], ['4.5', t('lineW.mid')], ['3.5', t('lineW.thin')]])) +
         chkH('refMark', t('set.refMark')) + chkH('xlPhotos', t('set.xlPhotos')),
         '<button type="button" id="sSaveDrive">' + t('set.saveDrive') + '</button>',
         t('set.docsNote')) +
@@ -2463,7 +2464,8 @@
   }
   function cfgChanged(k) {
     saveCfg();
-    RB.setRef(CFG.refMark !== false);
+    RB.setRef(CFG.refMark !== false); RB.setLineW(CFG.lineW);
+    if (k === 'lineW') renderAll();
     if (k === 'layer') setLayer(CFG.layer === 'sat');
     if ((k === 'offRoute' || k === 'navAcc') && N.matcher) { N.matcher.maxOff = CFG.offRoute; N.matcher.maxAcc = CFG.navAcc; }
     if (k === 'map') setTimeout(function () { map.invalidateSize(); }, 60);
@@ -2518,7 +2520,7 @@
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();
   }
   setLayer(CFG.layer === 'sat');
-  RB.setRef(CFG.refMark !== false);
+  RB.setRef(CFG.refMark !== false); RB.setLineW(CFG.lineW);
   // road shapes are redrawn with the current rules each time the app opens
   P.stages.forEach(function (st) { (st.points || []).forEach(function (p) { if (p.curve === 'gps') refreshShape(st, p); }); });
   applyI18n(); applyTheme(); renderAll(); fitStage();
