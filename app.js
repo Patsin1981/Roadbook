@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.6.0';
+  var APP_VER = '2.6.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1885,12 +1885,17 @@
   // ---------- Whole-event overview: one big picture of every leg, to pan and zoom on a phone ----------
   // Long side ~6000 px (iPhone/iPad Safari stop at ~16 million pixels, so ~4000 there). Saved as JPEG to keep the
   // file small enough to send; in LINE it must go as a file, a photo gets shrunk.
-  function exportEventOverview() {
+  // 13 colours that stay apart from each other on satellite and on a road map (style 'color' / 'both')
+  var LEG_COLORS = ['#E6194B', '#3CB44B', '#FFB000', '#4363D8', '#F58231', '#911EB4', '#00B5C8', '#F032E6', '#7FBF00', '#C2185B', '#008080', '#9A6324', '#1A1A80'];
+  function exportEventOverview(layerIn, styleIn) {
     var legs = driveOrder(P.stages).filter(function (st) { return st.track.length > 1; });
     if (!legs.length) return toast(t('err.noStage'));
-    ask({ title: t('evo.title'), body: t('evo.body'), choices: [
-      { v: 'sat', label: t('evo.sat'), note: t('evo.satNote'), primary: true }, { v: 'osm', label: t('evo.osm'), note: t('evo.osmNote') }] }).then(function (layer) {
+    var pick = layerIn ? Promise.resolve(layerIn) : ask({ title: t('evo.title'), body: t('evo.body'), choices: [
+      { v: 'sat', label: t('evo.sat'), note: t('evo.satNote'), primary: true }, { v: 'osm', label: t('evo.osm'), note: t('evo.osmNote') }] });
+    return pick.then(function (layer) {
       if (!layer) return;
+      var style = styleIn || CFG.evoStyle || 'num';
+      var colorOf = function (st, i) { return style === 'num' ? stageColor(st) : LEG_COLORS[i % LEG_COLORS.length]; };
       var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       var LONG = ios ? 4000 : 6000, PAD = 140, all = [].concat.apply([], legs.map(function (st) { return st.track; }));
       var n = -90, so = 90, e = -180, w = 180;
@@ -1901,7 +1906,21 @@
       fit = Math.min(1, (LONG - 2 * PAD) / Math.max(span, 1));
       var Wm = Math.round(Math.max((b.x - a.x) * fit + 2 * PAD, LONG * 0.55)), Hm = Math.round(Math.max((b.y - a.y) * fit + 2 * PAD, LONG * 0.55));
       var K = Math.max(Wm, Hm) / 2600; // text and lines grow with the picture so they read the same when zoomed
-      var lines = legs.map(function (st) { return { track: st.track, color: stageColor(st), width: kindOf(st) === 'ss' ? 9 : 6 }; });
+      var lines = legs.map(function (st, i) { return { track: st.track, color: colorOf(st, i), width: kindOf(st) === 'ss' ? 9 : 6 }; });
+      // the running number on each leg, in the middle and every ~5 km; a leg driven twice (same road) shows both numbers
+      var badges = [], same = function (a, b) {
+        var la = lenOf(a), lb = lenOf(b);
+        return Math.abs(la - lb) < Math.max(80, la * 0.03) && RB.hav(a.track[0], b.track[0]) < 60 && RB.hav(a.track[a.track.length - 1], b.track[b.track.length - 1]) < 60;
+      };
+      if (style !== 'color') legs.forEach(function (st, i) {
+        var twins = legs.map(function (o2, j) { return j; }).filter(function (j) { return j === i || same(legs[j], st); });
+        if (twins[0] !== i) return; // drawn with the first of the pair
+        var text = twins.map(function (j) { return pad2(j + 1); }).join('/'), L = lenOf(st), cum = cumOf(st), n = Math.max(1, Math.round(L / 5000));
+        for (var q = 0; q < n; q++) {
+          var target = L * (q + 0.5) / n, k = 0; while (k < cum.length - 1 && cum[k] < target) k++;
+          badges.push({ lat: st.track[k][0], lon: st.track[k][1], text: text, color: colorOf(st, i), ink: '#fff' });
+        }
+      });
       var labels = [];
       legs.forEach(function (st) {
         pts(st).filter(RB.isControl).forEach(function (p) { labels.push({ lat: p.lat, lon: p.lon, title: p.code || p.type, kind: p.type }); });
@@ -1909,7 +1928,7 @@
       });
       var mid = all[Math.floor(all.length / 2)], sh = layer === 'sat' ? offsetAt(mid[0], mid[1]) : null;
       toast(t('evo.loading', { p: 0 }), 600000);
-      var opts = { lines: lines, labels: labels, layer: layer, w: Wm, h: Hm, pad: PAD, k: K, zoom: z, fit: fit, shift: sh ? { e: sh.e, n: sh.n } : null,
+      var opts = { lines: lines, labels: labels, badges: badges, layer: layer, w: Wm, h: Hm, pad: PAD, k: K, zoom: z, fit: fit, shift: sh ? { e: sh.e, n: sh.n } : null,
         onTile: function (d, tot) { if (d % 10 === 0 || d === tot) toast(t('evo.loading', { p: Math.round(d / tot * 100) }), 600000); } };
       var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
       fontReady.then(function () { return RBO.render(opts); }).then(function (map) {
@@ -1918,7 +1937,11 @@
       }).then(function (map) {
         // header: event, date, then every leg in running order with its length, in columns
         var ev0 = ev(), font = '"Barlow Condensed", Tahoma, sans-serif', fs = Math.round(30 * K), lh = Math.round(fs * 1.35);
-        var colW = Math.round(fs * 14), cols = Math.max(1, Math.floor((Wm - 2 * fs) / colW)), rows = Math.ceil(legs.length / cols);
+        var entry = function (st, i) { return pad2(i + 1) + '  ' + st.name + '  ' + (lenOf(st) * fac(st) / 1000).toFixed(2) + ' km'; };
+        var mg = document.createElement('canvas').getContext('2d'); mg.font = '600 ' + Math.round(fs * 0.9) + 'px ' + font;
+        var widest = Math.max.apply(null, legs.map(function (st, i) { return mg.measureText(entry(st, i)).width; }));
+        var colW = Math.round(widest + fs * 2.6), cols = Math.max(1, Math.min(legs.length, Math.floor((Wm - fs) / colW))), rows = Math.ceil(legs.length / cols);
+        if (cols === 1) colW = Wm - 2 * fs;
         var head = Math.round(fs * 4) + rows * lh + Math.round(fs * 0.8);
         var cv = document.createElement('canvas'); cv.width = Wm; cv.height = Hm + head; var g = cv.getContext('2d');
         g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
@@ -1930,7 +1953,7 @@
         g.fillText([ev0.date, ev0.place, t('evo.total', { km: (total / 1000).toFixed(1), ss: (ssKm / 1000).toFixed(1) })].filter(Boolean).join('    '), fs, Math.round(fs * 2.4));
         legs.forEach(function (st, i) {
           var c = i % cols, r = Math.floor(i / cols), x = fs + c * colW, y = Math.round(fs * 4) + r * lh;
-          g.fillStyle = stageColor(st); g.fillRect(x, y + lh * 0.3, fs * 1.2, Math.max(4, fs * 0.28));
+          g.fillStyle = colorOf(st, i); g.fillRect(x, y + lh * 0.25, fs * 1.2, Math.max(4, fs * (style === 'num' ? 0.28 : 0.45)));
           g.fillStyle = '#000'; g.font = '600 ' + Math.round(fs * 0.9) + 'px ' + font;
           var txt = pad2(i + 1) + '  ' + st.name, km = '  ' + (lenOf(st) * fac(st) / 1000).toFixed(2) + ' km', maxW = colW - fs * 1.8;
           while (g.measureText(txt + km).width > maxW && txt.length > 6) txt = txt.slice(0, -2) + '…';
@@ -2071,7 +2094,7 @@
   };
   $('bSortStages').onclick = function () { sortStagesAsk(false); };
   // KML for Google My Maps: import it once there, then share the map link; it opens in the Google Maps app
-  $('bEvOverview').onclick = exportEventOverview;
+  $('bEvOverview').onclick = function () { exportEventOverview(); };
   $('bKmlOut').onclick = function () {
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
@@ -2765,5 +2788,5 @@
     navigator.serviceWorker.addEventListener('controllerchange', function () { if (!reloaded) { reloaded = true; location.reload(); } });
   }
   // test hook, only with ?debug in the address
-  if (/[?&]debug\b/.test(location.search)) window.__rb = { get P() { return P; }, get S() { return S; }, map: map, sat: sat, selectStage: selectStage };
+  if (/[?&]debug\b/.test(location.search)) window.__rb = { get P() { return P; }, get S() { return S; }, evo: function (l, st) { return exportEventOverview(l, st); }, map: map, sat: sat, selectStage: selectStage };
 })();

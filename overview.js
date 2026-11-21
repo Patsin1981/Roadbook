@@ -130,6 +130,19 @@
           acc += seg;
         }
       });
+      // number badges on the lines (whole-event picture): {lat, lon, text, color}
+      var badgeBoxes = [];
+      (o.badges || []).forEach(function (bd) {
+        var p = px(bd.lat, bd.lon); g.font = 'bold ' + 24 * K + 'px ' + font;
+        var tw = g.measureText(bd.text).width, r = Math.max(19 * K, tw / 2 + 9 * K), hh = 19 * K;
+        g.fillStyle = bd.color || '#000'; g.strokeStyle = '#fff'; g.lineWidth = 3.5 * K;
+        g.beginPath();
+        if (r > hh + 0.5) { g.moveTo(p.x - r + hh, p.y - hh); g.lineTo(p.x + r - hh, p.y - hh); g.arc(p.x + r - hh, p.y, hh, -Math.PI / 2, Math.PI / 2); g.lineTo(p.x - r + hh, p.y + hh); g.arc(p.x - r + hh, p.y, hh, Math.PI / 2, Math.PI * 1.5); }
+        else g.arc(p.x, p.y, hh, 0, 7);
+        g.closePath(); g.fill(); g.stroke();
+        g.fillStyle = bd.ink || '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(bd.text, p.x, p.y + 1 * K);
+        badgeBoxes.push({ x: p.x - r, y: p.y - hh, w: 2 * r, h: 2 * hh });
+      });
       // labels
       var items = (o.labels || []).map(function (l) {
         var p = px(l.lat, l.lon);
@@ -137,7 +150,7 @@
         g.font = '600 ' + 20 * K + 'px ' + font; var w2 = l.sub ? g.measureText(l.sub).width : 0;
         return { x: p.x, y: p.y, w: Math.max(w1, w2) + 20 * K, h: (l.sub ? 54 : 34) * K, gap: 14 * K, l: l };
       });
-      var avoid = items.map(function (it) { return { x: it.x - 8 * K, y: it.y - 8 * K, w: 16 * K, h: 16 * K }; });
+      var avoid = items.map(function (it) { return { x: it.x - 8 * K, y: it.y - 8 * K, w: 16 * K, h: 16 * K }; }).concat(badgeBoxes);
       placeLabels(items, W, H, avoid);
       items.forEach(function (it) {
         var b = it.box, l = it.l, dark = l.kind === 'START' || l.kind === 'FINISH';
