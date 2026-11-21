@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.5.0';
+  var APP_VER = '2.6.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1882,6 +1882,72 @@
     }).catch(function () { toast(t('ov.fail'), 5000); });
   }
 
+  // ---------- Whole-event overview: one big picture of every leg, to pan and zoom on a phone ----------
+  // Long side ~6000 px (iPhone/iPad Safari stop at ~16 million pixels, so ~4000 there). Saved as JPEG to keep the
+  // file small enough to send; in LINE it must go as a file, a photo gets shrunk.
+  function exportEventOverview() {
+    var legs = driveOrder(P.stages).filter(function (st) { return st.track.length > 1; });
+    if (!legs.length) return toast(t('err.noStage'));
+    ask({ title: t('evo.title'), body: t('evo.body'), choices: [
+      { v: 'sat', label: t('evo.sat'), note: t('evo.satNote'), primary: true }, { v: 'osm', label: t('evo.osm'), note: t('evo.osmNote') }] }).then(function (layer) {
+      if (!layer) return;
+      var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var LONG = ios ? 4000 : 6000, PAD = 140, all = [].concat.apply([], legs.map(function (st) { return st.track; }));
+      var n = -90, so = 90, e = -180, w = 180;
+      all.forEach(function (p) { n = Math.max(n, p[0]); so = Math.min(so, p[0]); e = Math.max(e, p[1]); w = Math.min(w, p[1]); });
+      // the sharpest map zoom whose tiles, drawn at 50–100 % size, make the long side about LONG
+      var maxZ = layer === 'sat' ? 17 : 18, z = maxZ, a, b, span, fit = 1;
+      for (; z > 4; z--) { a = RBO.project(n, w, z); b = RBO.project(so, e, z); span = Math.max(b.x - a.x, b.y - a.y); if (span * 0.5 <= LONG - 2 * PAD) break; }
+      fit = Math.min(1, (LONG - 2 * PAD) / Math.max(span, 1));
+      var Wm = Math.round(Math.max((b.x - a.x) * fit + 2 * PAD, LONG * 0.55)), Hm = Math.round(Math.max((b.y - a.y) * fit + 2 * PAD, LONG * 0.55));
+      var K = Math.max(Wm, Hm) / 2600; // text and lines grow with the picture so they read the same when zoomed
+      var lines = legs.map(function (st) { return { track: st.track, color: stageColor(st), width: kindOf(st) === 'ss' ? 9 : 6 }; });
+      var labels = [];
+      legs.forEach(function (st) {
+        pts(st).filter(RB.isControl).forEach(function (p) { labels.push({ lat: p.lat, lon: p.lon, title: p.code || p.type, kind: p.type }); });
+        if (kindOf(st) === 'ss' && st.name) labels.push({ lat: st.track[0][0], lon: st.track[0][1], title: st.name, kind: 'NAME', fill: stageColor(st), ink: '#fff' });
+      });
+      var mid = all[Math.floor(all.length / 2)], sh = layer === 'sat' ? offsetAt(mid[0], mid[1]) : null;
+      toast(t('evo.loading', { p: 0 }), 600000);
+      var opts = { lines: lines, labels: labels, layer: layer, w: Wm, h: Hm, pad: PAD, k: K, zoom: z, fit: fit, shift: sh ? { e: sh.e, n: sh.n } : null,
+        onTile: function (d, tot) { if (d % 10 === 0 || d === tot) toast(t('evo.loading', { p: Math.round(d / tot * 100) }), 600000); } };
+      var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
+      fontReady.then(function () { return RBO.render(opts); }).then(function (map) {
+        try { map.getContext('2d').getImageData(0, 0, 1, 1); } catch (x) { opts.noTiles = true; return RBO.render(opts); }
+        return map;
+      }).then(function (map) {
+        // header: event, date, then every leg in running order with its length, in columns
+        var ev0 = ev(), font = '"Barlow Condensed", Tahoma, sans-serif', fs = Math.round(30 * K), lh = Math.round(fs * 1.35);
+        var colW = Math.round(fs * 14), cols = Math.max(1, Math.floor((Wm - 2 * fs) / colW)), rows = Math.ceil(legs.length / cols);
+        var head = Math.round(fs * 4) + rows * lh + Math.round(fs * 0.8);
+        var cv = document.createElement('canvas'); cv.width = Wm; cv.height = Hm + head; var g = cv.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+        g.fillStyle = '#000'; g.textBaseline = 'top'; g.textAlign = 'left';
+        g.font = 'bold ' + Math.round(fs * 1.6) + 'px ' + font;
+        g.fillText((ev0.title || P.name || 'Rally') + '   Overview', fs, Math.round(fs * 0.6));
+        g.font = '600 ' + fs + 'px ' + font;
+        var total = legs.reduce(function (sum, st) { return sum + lenOf(st) * fac(st); }, 0), ssKm = legs.filter(function (st) { return kindOf(st) === 'ss'; }).reduce(function (sum, st) { return sum + lenOf(st) * fac(st); }, 0);
+        g.fillText([ev0.date, ev0.place, t('evo.total', { km: (total / 1000).toFixed(1), ss: (ssKm / 1000).toFixed(1) })].filter(Boolean).join('    '), fs, Math.round(fs * 2.4));
+        legs.forEach(function (st, i) {
+          var c = i % cols, r = Math.floor(i / cols), x = fs + c * colW, y = Math.round(fs * 4) + r * lh;
+          g.fillStyle = stageColor(st); g.fillRect(x, y + lh * 0.3, fs * 1.2, Math.max(4, fs * 0.28));
+          g.fillStyle = '#000'; g.font = '600 ' + Math.round(fs * 0.9) + 'px ' + font;
+          var txt = pad2(i + 1) + '  ' + st.name, km = '  ' + (lenOf(st) * fac(st) / 1000).toFixed(2) + ' km', maxW = colW - fs * 1.8;
+          while (g.measureText(txt + km).width > maxW && txt.length > 6) txt = txt.slice(0, -2) + '…';
+          g.fillText(txt + km, x + fs * 1.6, y);
+        });
+        g.drawImage(map, 0, head);
+        var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+        cv.toBlob(function (blob) {
+          if (!blob) return toast(t('evo.tooBig'), 6000);
+          var el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = safeName(P.name) + '_overview_all_' + day + '.jpg';
+          document.body.appendChild(el); el.click(); setTimeout(function () { URL.revokeObjectURL(el.href); el.remove(); }, 3000);
+          toast(map.missingTiles ? t('ov.partial') : t('evo.done', { w: cv.width, h: cv.height, mb: (blob.size / 1048576).toFixed(1) }), 7000);
+        }, 'image/jpeg', 0.9);
+      }).catch(function () { toast(t('ov.fail'), 5000); });
+    });
+  }
+
   // ---------- Excel export (event SS Form layout) ----------
   var scriptCache = {};
   function loadScript(src) {
@@ -2005,6 +2071,7 @@
   };
   $('bSortStages').onclick = function () { sortStagesAsk(false); };
   // KML for Google My Maps: import it once there, then share the map link; it opens in the Google Maps app
+  $('bEvOverview').onclick = exportEventOverview;
   $('bKmlOut').onclick = function () {
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
