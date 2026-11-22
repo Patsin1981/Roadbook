@@ -57,18 +57,25 @@
   //    whole event: o.lines = [{track, color, width}] instead of track/color; o.k scales text, lines and arrows;
   //    o.zoom forces the map zoom; o.onTile(done, total) reports progress while the map loads
   function render(o) {
-    var W = o.w, H = o.h, pad = o.pad || 60, L = LAYERS[o.layer] || LAYERS.osm, K = o.k || 1;
+    var W = o.w, H = o.h, pad = o.pad || 80, L = LAYERS[o.layer] || LAYERS.osm, K = o.k || 1;
     var font = o.font || 'Barlow Condensed, Tahoma, sans-serif';
     var all = o.lines ? [].concat.apply([], o.lines.map(function (l) { return l.track; })) : o.track;
     var lats = all.map(function (p) { return p[0]; }), lons = all.map(function (p) { return p[1]; });
     var n = Math.max.apply(null, lats), s = Math.min.apply(null, lats), e = Math.max.apply(null, lons), w = Math.min.apply(null, lons);
-    var z = Math.min(L.max - 1, 17);
-    if (o.zoom) z = o.zoom; else for (; z > 3; z--) {
-      var a = project(n, w, z), b = project(s, e, z);
-      if (b.x - a.x <= W - 2 * pad && b.y - a.y <= H - 2 * pad) break;
+    // Map scale: the route fills the frame (less the margin kept for labels). Map zooms come in steps of x2, so take
+    // the sharpest zoom at which the route is at most twice too big and draw it smaller (o.fit 0.5..1);
+    // the tiles stay sharp and the route always fills the frame, whatever its size.
+    var z = Math.min(L.max, 18), fitAuto = 1;
+    if (o.zoom) z = o.zoom; else {
+      for (; z > 3; z--) {
+        var a = project(n, w, z), b = project(s, e, z);
+        if ((b.x - a.x) * 0.5 <= W - 2 * pad && (b.y - a.y) * 0.5 <= H - 2 * pad) break;
+      }
+      var a2 = project(n, w, z), b2 = project(s, e, z);
+      fitAuto = Math.min(1, (W - 2 * pad) / Math.max(1, b2.x - a2.x), (H - 2 * pad) / Math.max(1, b2.y - a2.y));
     }
     // o.fit (0.5..1) draws zoom z a little smaller, so a big picture can be any size and still use sharp tiles
-    var FS = o.fit || 1, T = TILE * FS, proj = function (la, lo) { var q = project(la, lo, z); return { x: q.x * FS, y: q.y * FS }; };
+    var FS = o.fit || fitAuto, T = TILE * FS, proj = function (la, lo) { var q = project(la, lo, z); return { x: q.x * FS, y: q.y * FS }; };
     var c1 = proj(n, w), c2 = proj(s, e);
     var ox = (c1.x + c2.x) / 2 - W / 2, oy = (c1.y + c2.y) / 2 - H / 2;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
