@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.6.3';
+  var APP_VER = '2.7.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -190,7 +190,7 @@
   var map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([13.75, 100.5], 6);
   var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: 'anonymous', attribution: '&copy; OpenStreetMap' }).addTo(map);
   var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20, maxNativeZoom: 18, crossOrigin: 'anonymous', attribution: 'Imagery &copy; Esri' });
-  var gTracks = L.layerGroup().addTo(map), gPins = L.layerGroup().addTo(map), gSug = L.layerGroup().addTo(map), gNav = L.layerGroup().addTo(map), gRec = L.layerGroup().addTo(map), gDraw = L.layerGroup().addTo(map), gArrows = L.layerGroup().addTo(map), gEdit = L.layerGroup().addTo(map), gNames = L.layerGroup().addTo(map);
+  var gTracks = L.layerGroup().addTo(map), gPins = L.layerGroup().addTo(map), gSug = L.layerGroup().addTo(map), gNav = L.layerGroup().addTo(map), gRec = L.layerGroup().addTo(map), gDraw = L.layerGroup().addTo(map), gArrows = L.layerGroup().addTo(map), gEdit = L.layerGroup().addTo(map), gNames = L.layerGroup().addTo(map), gPlaces = L.layerGroup().addTo(map);
   var draftMarker = null;
   function dot() { return L.divIcon({ className: '', html: '<div class="gpsdot"></div>', iconSize: [20, 20] }); }
 
@@ -207,6 +207,7 @@
   function fitStage() { var st = stage(); if (st && st.track.length) map.fitBounds(L.latLngBounds(st.track), { padding: [24, 24] }); }
   $('fAdd').onclick = function () { setAdd(!S.addMode); };
   function setAdd(on) {
+    if (on) setPlaceMode(false);
     S.addMode = on; $('fAdd').setAttribute('aria-pressed', on); $('addHint').hidden = !on;
     map.getContainer().style.cursor = on ? 'crosshair' : '';
   }
@@ -225,6 +226,7 @@
     if (S.draw) return drawAdd(e.latlng.lat, e.latlng.lng);
     if (S.edit) return editTap(e.latlng);
     if (S.imgOff) return;
+    if (S.placeMode) { setPlaceMode(false); return openPlace({ lat: e.latlng.lat, lon: e.latlng.lng }, true); }
     if (!S.addMode) return;
     var st = stage(); if (!st) return toast(t('err.needGpx'));
     var r = RB.project(st.track, cumOf(st), e.latlng.lat, e.latlng.lng);
@@ -281,6 +283,113 @@
     }
     drawArrows(); drawNames();
   }
+  // ---------- Places: marks off the route (HQ, service park, hospital ...) ----------
+  // Kept in P.places = [{id, lat, lon, icon, name, note, photos}]; no km, not in the roadbook, but on the map,
+  // in the Overview pictures, in KML / GPX, and one tap away from Google Maps / Waze.
+  var PLACE_ICONS = [['hq', 'HQ', '#000000'], ['service', 'SVC', '#0050B3'], ['parc', 'PF', '#0050B3'], ['fuel', 'FUEL', '#2E7D32'],
+    ['hospital', 'H', '#D0021B'], ['ambulance', '+', '#D0021B'], ['marshal', 'MAR', '#E65100'], ['spectator', 'VIEW', '#6A1B9A'],
+    ['hotel', 'HOTEL', '#5D4037'], ['parking', 'P', '#1565C0'], ['other', '•', '#455A64']];
+  function placeIcon(id) { for (var i = 0; i < PLACE_ICONS.length; i++) if (PLACE_ICONS[i][0] === id) return PLACE_ICONS[i]; return PLACE_ICONS[PLACE_ICONS.length - 1]; }
+  function placeTitle(pl) { var ic = placeIcon(pl.icon); return pl.name ? (ic[0] === 'other' ? pl.name : ic[1] + ' ' + pl.name) : t('plc.' + ic[0]); }
+  function setPlaceMode(on) {
+    if (on && S.addMode) setAdd(false);
+    S.placeMode = on; $('fPlace').setAttribute('aria-pressed', on); $('placeHint').hidden = !on;
+    map.getContainer().style.cursor = on ? 'crosshair' : '';
+  }
+  $('fPlace').onclick = function () { setPlaceMode(!S.placeMode); };
+  // the hint itself: no tapping on the map, take a pasted link / coordinates instead (starts at the map centre)
+  $('placeHint').onclick = function () { var c = map.getCenter(); setPlaceMode(false); openPlace({ lat: c.lat, lon: c.lng }, true, true); };
+  function drawPlaces() {
+    gPlaces.clearLayers();
+    var small = map.getZoom() < 13;
+    (P.places || []).forEach(function (pl) {
+      var ic = placeIcon(pl.icon);
+      var m = L.marker([pl.lat, pl.lon], { draggable: S.mode === 'org', keyboard: false, zIndexOffset: 500,
+        icon: L.divIcon({ className: 'plc-icon', iconSize: [0, 0], iconAnchor: [0, 0],
+          html: '<div class="plc' + (small ? ' small' : '') + '" style="--c:' + ic[2] + '"><b>' + RB.esc(ic[1]) + '</b>' + (pl.name ? '<span>' + RB.esc(pl.name) + '</span>' : '') + '</div>' }) }).addTo(gPlaces);
+      m.on('click', function (e) { L.DomEvent.stop(e); if (S.draw || S.edit || S.imgOff) return; openPlace(pl, false); });
+      m.on('dragend', function () { var ll = m.getLatLng(); pl.lat = +ll.lat.toFixed(6); pl.lon = +ll.lng.toFixed(6); save(); toast(t('pl.moved'), 2000); });
+    });
+  }
+  // "13.0912, 101.6034", "13.0912 101.6034" or a Google Maps link (…@13.09,101.60… / q=13.09,101.60 / !3d13.09!4d101.60)
+  function parseLatLon(s) {
+    s = String(s || '').trim(); if (!s) return null;
+    try { s = decodeURIComponent(s); } catch (e) {}
+    var m = /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/.exec(s) || /[@=](-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/.exec(s) || /(-?\d{1,2}\.\d{3,})\s*[, ]\s*(-?\d{1,3}\.\d{3,})/.exec(s);
+    if (!m) return null;
+    var la = +m[1], lo = +m[2];
+    return Math.abs(la) <= 90 && Math.abs(lo) <= 180 ? [la, lo] : null;
+  }
+  var PL = null, plOrig = null, plIsNew = false;
+  function openPlace(pl, isNew, focusPaste) {
+    plOrig = isNew ? null : pl; plIsNew = !!isNew;
+    PL = JSON.parse(JSON.stringify(pl)); PL.icon = PL.icon || 'hq'; PL.photos = PL.photos || [];
+    $('plTitle').textContent = t(isNew ? 'pl.new' : 'pl.edit');
+    $('plIcons').innerHTML = PLACE_ICONS.map(function (ic) { return '<button type="button" data-ic="' + ic[0] + '" style="--c:' + ic[2] + '"><b>' + RB.esc(ic[1]) + '</b>' + t('plc.' + ic[0]) + '</button>'; }).join('');
+    $('plName').value = PL.name || ''; $('plNote').value = PL.note || ''; $('plPaste').value = '';
+    $('plDel').hidden = isNew; plSync(); plPhotos();
+    $('plDlg').showModal();
+    if (focusPaste) setTimeout(function () { $('plPaste').focus(); }, 50);
+  }
+  function plSync() {
+    $('plIcons').querySelectorAll('[data-ic]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.ic === PL.icon); });
+    $('plPos').textContent = (+PL.lat).toFixed(5) + ', ' + (+PL.lon).toFixed(5);
+  }
+  $('plIcons').onclick = function (e) { var b = e.target.closest('[data-ic]'); if (b && PL) { PL.icon = b.dataset.ic; plSync(); } };
+  $('plPaste').oninput = function () {
+    var ll = parseLatLon(this.value); if (!ll || !PL) return;
+    PL.lat = ll[0]; PL.lon = ll[1]; plSync(); toast(t('pl.posSet'), 1500);
+  };
+  $('plHere').onclick = function () {
+    if (!navigator.geolocation) return toast(t('err.noGps'));
+    toast(t('pl.locating'), 8000);
+    navigator.geolocation.getCurrentPosition(function (p) {
+      if (!PL) return;
+      PL.lat = +p.coords.latitude.toFixed(6); PL.lon = +p.coords.longitude.toFixed(6); plSync(); toast(t('pl.posSet'), 1500);
+    }, function () { toast(t('err.noGps'), 4000); }, { enableHighAccuracy: true, timeout: 15000 });
+  };
+  function plPhotos() {
+    $('plPhList').innerHTML = PL.photos.map(function (x, i) {
+      return '<div class="ph"><img data-ph="' + x.id + '" alt=""><div class="ph-ctl"><button type="button" class="danger-btn" data-phdel="' + i + '" aria-label="' + t('common.delete') + '">×</button></div></div>';
+    }).join('');
+    fillImgs($('plPhList'));
+  }
+  $('plPhList').onclick = function (e) {
+    var x = e.target.closest('[data-phdel]'), im = e.target.closest('img[data-ph]');
+    if (x) { PL.photos.splice(+x.dataset.phdel, 1); plPhotos(); } else if (im) openPhoto(im.dataset.ph, placeTitle(PL));
+  };
+  function addPlFiles(files) {
+    if (!PL || !files.length) return;
+    var target = PL; phBusy++; toast(t('ph.saving'), 20000);
+    files.slice(0, PH_MAX).reduce(function (pr, f) {
+      return pr.then(function () { return RBP.add(f).then(function (rec) { if (PL === target) { PL.photos.push({ id: rec.id }); plPhotos(); } }); });
+    }, Promise.resolve()).then(function () { toast(t('ph.added'), 1500); }).catch(function () { toast(t('ph.fail'), 5000); }).then(function () { phBusy--; });
+  }
+  $('inPlCam').onchange = function () { addPlFiles([].slice.call(this.files)); this.value = ''; };
+  $('inPlGal').onchange = function () { addPlFiles([].slice.call(this.files)); this.value = ''; };
+  $('plOk').onclick = function () {
+    if (!PL) return;
+    PL.name = $('plName').value.trim(); PL.note = $('plNote').value.trim();
+    PL.lat = +(+PL.lat).toFixed(6); PL.lon = +(+PL.lon).toFixed(6);
+    P.places = P.places || [];
+    if (plIsNew) { PL.id = 'pl' + uid(); P.places.push(PL); } else { var i = P.places.indexOf(plOrig); if (i >= 0) P.places[i] = PL; }
+    save(); drawPlaces(); $('plDlg').close(); PL = null; gcPhotos();
+  };
+  $('plDel').onclick = function () {
+    ask({ title: t('pl.delTitle', { n: placeTitle(PL) }), ok: t('common.delete'), danger: true }).then(function (ok) {
+      if (!ok) return;
+      P.places = (P.places || []).filter(function (x) { return x !== plOrig; });
+      save(); drawPlaces(); $('plDlg').close(); PL = null; gcPhotos();
+    });
+  };
+  $('plGo').onclick = function () { if (PL) openDirections(PL.lat, PL.lon); };
+  $('plDlg').addEventListener('close', function () { PL = null; });
+  // labels for the Overview pictures: the places inside the picture's area
+  function placeLabels(box) {
+    return (P.places || []).filter(function (pl) { return !box || (pl.lat <= box.n && pl.lat >= box.s && pl.lon <= box.e && pl.lon >= box.w); })
+      .map(function (pl) { var ic = placeIcon(pl.icon); return { lat: pl.lat, lon: pl.lon, title: placeTitle(pl), kind: 'PLACE', fill: ic[2], ink: '#fff' }; });
+  }
+
   // ---------- Stage name tags ----------
   // Every SS gets a small red tag pointing at its start. Tags are laid out in screen space; one that would cover
   // another is shown as a dot until you zoom in. The selected SS goes first so its tag always shows.
@@ -428,7 +537,7 @@
       });
     });
   }
-  map.on('zoomend', function () { drawNames(); drawPins(); });
+  map.on('zoomend', function () { drawNames(); drawPins(); drawPlaces(); });
   function drawSuggest() {
     gSug.clearLayers();
     var st = stage(); if (!st || S.mode !== 'org') return;
@@ -477,14 +586,14 @@
       drawEnd();
     }
     if (m !== 'org' && S.toolCancel) S.toolCancel(); // leaving the plan screen closes a line tool without keeping it
-    S.mode = m; setAdd(false);
+    S.mode = m; setAdd(false); setPlaceMode(false);
     ['org', 'rec', 'nav'].forEach(function (x) { document.body.classList.toggle('mode-' + x, x === m); });
     document.querySelectorAll('.mode button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.mode === m); });
     if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; }
     gNav.clearLayers(); gpsMarker = accCircle = null;
     if (m === 'nav') navDrawStatic();
     recDrawAll();
-    drawTracks(); drawPins(); drawSuggest(); renderNav(); renderRec();
+    drawTracks(); drawPins(); drawPlaces(); drawSuggest(); renderNav(); renderRec();
     setTimeout(function () {
       map.invalidateSize();
       var f = m === 'nav' ? N.fix : m === 'rec' ? R.fix : null;
@@ -1093,6 +1202,8 @@
     var a = [], seen = {};
     var add = function (id) { if (id && !seen[id]) { seen[id] = 1; a.push(id); } };
     P.stages.forEach(function (st) { (st.points || []).forEach(function (p) { phList(p).forEach(function (x) { add(x.id); }); }); });
+    (P.places || []).forEach(function (pl) { (pl.photos || []).forEach(function (x) { add(x.id); }); });
+    if (!onlyProject && PL) (PL.photos || []).forEach(function (x) { add(x.id); });
     if (!onlyProject) {
       if (typeof R !== 'undefined' && R) (R.marks || []).forEach(function (m) { (m.photos || []).forEach(add); });
       if (D) phList(D).forEach(function (x) { add(x.id); });
@@ -1876,7 +1987,10 @@
     var i = P.stages.indexOf(st), extra = [P.stages[i - 1], P.stages[i + 1]].filter(function (x) { return x && kindOf(x) === 'liaison'; })
       .map(function (x) { return { track: x.track, color: stageColor(x) }; });
     var mid = st.track[Math.floor(st.track.length / 2)], sh = S.sat && mid ? offsetAt(mid[0], mid[1]) : null;
-    var opts = { track: st.track, labels: overviewLabels(st), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra, shift: sh ? { e: sh.e, n: sh.n } : null };
+    var bn = -90, bs = 90, be = -180, bw = 180;
+    st.track.forEach(function (p) { bn = Math.max(bn, p[0]); bs = Math.min(bs, p[0]); be = Math.max(be, p[1]); bw = Math.min(bw, p[1]); });
+    var my = (bn - bs) * 0.2 + 0.002, mx = (be - bw) * 0.2 + 0.002;
+    var opts = { track: st.track, labels: overviewLabels(st).concat(placeLabels({ n: bn + my, s: bs - my, e: be + mx, w: bw - mx })), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra, shift: sh ? { e: sh.e, n: sh.n } : null };
     var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
     return fontReady.then(function () { return RBO.render(opts); }).then(function (cv) {
       try { cv.toDataURL('image/png'); return cv; } // a tile without CORS would block reading the picture
@@ -1916,6 +2030,7 @@
   // file small enough to send; in LINE it must go as a file, a photo gets shrunk.
   // 13 colours that stay apart from each other on satellite and on a road map (style 'color' / 'both')
   var LEG_COLORS = ['#E6194B', '#3CB44B', '#FFB000', '#4363D8', '#F58231', '#911EB4', '#00B5C8', '#F032E6', '#7FBF00', '#C2185B', '#008080', '#9A6324', '#1A1A80'];
+  function gpxPlaces() { return (P.places || []).map(function (pl) { return { lat: pl.lat, lon: pl.lon, name: placeTitle(pl), desc: pl.note || '', color: placeIcon(pl.icon)[2] }; }); }
   function exportEventOverview(layerIn, styleIn) {
     var legs = driveOrder(P.stages).filter(function (st) { return st.track.length > 1; });
     if (!legs.length) return toast(t('err.noStage'));
@@ -1926,7 +2041,8 @@
       var style = styleIn || CFG.evoStyle || 'num';
       var colorOf = function (st, i) { return style === 'num' ? stageColor(st) : LEG_COLORS[i % LEG_COLORS.length]; };
       var ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      var LONG = ios ? 4000 : 6000, PAD = 140, all = [].concat.apply([], legs.map(function (st) { return st.track; }));
+      var LONG = ios ? 4000 : 6000, PAD = 140, all = [].concat.apply([], legs.map(function (st) { return st.track; }))
+        .concat((P.places || []).map(function (pl) { return [pl.lat, pl.lon]; })); // places widen the frame
       var n = -90, so = 90, e = -180, w = 180;
       all.forEach(function (p) { n = Math.max(n, p[0]); so = Math.min(so, p[0]); e = Math.max(e, p[1]); w = Math.min(w, p[1]); });
       // the sharpest map zoom whose tiles, drawn at 50–100 % size, make the long side about LONG
@@ -1955,6 +2071,7 @@
         pts(st).filter(RB.isControl).forEach(function (p) { labels.push({ lat: p.lat, lon: p.lon, title: p.code || p.type, kind: p.type }); });
         if (kindOf(st) === 'ss' && st.name) labels.push({ lat: st.track[0][0], lon: st.track[0][1], title: st.name, kind: 'NAME', fill: stageColor(st), ink: '#fff' });
       });
+      labels = labels.concat(placeLabels(null));
       var mid = all[Math.floor(all.length / 2)], sh = layer === 'sat' ? offsetAt(mid[0], mid[1]) : null;
       toast(t('evo.loading', { p: 0 }), 600000);
       var opts = { lines: lines, labels: labels, badges: badges, layer: layer, w: Wm, h: Hm, pad: PAD, k: K, zoom: z, fit: fit, shift: sh ? { e: sh.e, n: sh.n } : null,
@@ -2116,7 +2233,7 @@
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
       if (!list) return;
-      download(safeName(P.name) + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true, colorOf: stageColor }), 'application/gpx+xml');
+      download(safeName(P.name) + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true, colorOf: stageColor, places: gpxPlaces() }), 'application/gpx+xml');
     });
   };
   $('bSortStages').onclick = function () { sortStagesAsk(false); };
@@ -2126,7 +2243,7 @@
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
       if (!list) return;
-      download(safeName(P.name) + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml').then(function (ok) {
+      download(safeName(P.name) + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, places: gpxPlaces(), kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml').then(function (ok) {
       if (ok) ask({ title: t('kml.title'), body: t('kml.body'), ok: t('kml.open') }).then(function (ok) { if (ok) window.open('https://www.google.com/maps/d/', '_blank', 'noopener'); });
       });
     });
@@ -2777,7 +2894,7 @@
 
   // ---------- Render all ----------
   function renderAll() {
-    RB.setMySym(P.mySym);
+    RB.setMySym(P.mySym); drawPlaces();
     $('projName').value = P.name || '';
     $('storeNote').textContent = store.mem ? t('file.storeMem') : t('file.storeOk');
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();

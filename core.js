@@ -610,6 +610,10 @@
           '</description><Point><coordinates>' + p.lon.toFixed(6) + ',' + p.lat.toFixed(6) + '</coordinates></Point></Placemark>\n';
       });
     });
+    (opts.places || []).forEach(function (pl) {
+      pins += '<Placemark><name>' + esc(pl.name) + '</name>' + (pl.desc ? '<description>' + esc(pl.desc) + '</description>' : '') +
+        '<Point><coordinates>' + (+pl.lon).toFixed(6) + ',' + (+pl.lat).toFixed(6) + '</coordinates></Point></Placemark>\n';
+    });
     return '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>' + esc(opts.name || 'Rally Roadbook') + '</name>\n' +
       Object.keys(styles).map(function (k) { return styles[k]; }).join('\n') + '\n' + lines + pins + '</Document></kml>\n';
   }
@@ -631,6 +635,9 @@
           : st.name + ' #' + (i + 1) + ' ' + lbl;
         s += '<wpt lat="' + p.lat.toFixed(7) + '" lon="' + p.lon.toFixed(7) + '"><name>' + esc(nm) + '</name><desc>' + esc(st.name + ' · ' + (p.d * f / 1000).toFixed(3) + ' km ' + (p.time ? p.time + ' ' : '') + (p.place ? p.place + ' ' : '') + (p.th || '') + (p.en ? ' / ' + p.en : '')) + '</desc></wpt>\n';
       });
+    });
+    (opts.places || []).forEach(function (pl) {
+      s += '<wpt lat="' + (+pl.lat).toFixed(7) + '" lon="' + (+pl.lon).toFixed(7) + '"><name>' + esc(pl.name) + '</name>' + (pl.desc ? '<desc>' + esc(pl.desc) + '</desc>' : '') + '<sym>Flag</sym></wpt>\n';
     });
     var w = String(stages.length).length < 2 ? 2 : String(stages.length).length;
     stages.forEach(function (st, k) {

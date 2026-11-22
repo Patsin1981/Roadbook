@@ -90,12 +90,14 @@
       <button class="fab" id="fImgOff" hidden data-i18n="fab.imgOff"></button>
       <button class="fab org-only" id="fAdd" aria-pressed="false" data-i18n="fab.add"></button>
       <button class="fab org-only" id="fDraw" data-i18n="fab.draw"></button>
+      <button class="fab org-only" id="fPlace" aria-pressed="false" data-i18n="fab.place"></button>
       <button class="fab org-only" id="fFilter" aria-pressed="false" data-i18n="fab.ctrlOnly"></button>
       <button class="fab org-only" id="fFit" data-i18n="fab.fit"></button>
       <button class="fab nav-only rec-only" id="fFollow" aria-pressed="true" data-i18n="fab.follow"></button>
       <button class="fab org-only" id="fLocate" data-i18n="fab.locate"></button>
     </div>
     <div class="hint" id="addHint" hidden data-i18n="hint.add"></div>
+    <div class="hint" id="placeHint" hidden data-i18n="hint.place"></div>
     <div class="drawbar" id="toolBar" hidden>
       <div class="drawinfo"><b id="toolTitle"></b><span id="toolMsg"></span></div>
       <div class="drawbtns" id="toolBtns"></div>
@@ -307,6 +309,31 @@
     <span class="sp"></span>
     <button type="button" id="padCancel" data-i18n="common.cancel"></button><button type="button" id="padDone" class="primary" data-i18n="pad.done"></button>
   </div>
+</dialog>
+<dialog id="plDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="plTitle" style="margin:0 0 8px"></h2>
+    <div class="pl-icons" id="plIcons" role="group"></div>
+    <label class="field"><span data-i18n="pl.name"></span><input id="plName" autocomplete="off"></label>
+    <label class="field"><span data-i18n="pl.note"></span><textarea id="plNote" rows="2"></textarea></label>
+    <div class="field"><span data-i18n="pl.pos"></span> <b id="plPos"></b>
+      <div class="row2"><input id="plPaste" data-i18n-ph="pl.paste" autocomplete="off"><button type="button" id="plHere" data-i18n="pl.here"></button></div>
+    </div>
+    <div class="field"><span data-i18n="ph.title"></span>
+      <div class="ph-list" id="plPhList"></div>
+      <div class="row2">
+        <label class="btn"><span data-i18n="ph.camera"></span><input type="file" id="inPlCam" accept="image/*" capture="environment" hidden></label>
+        <label class="btn"><span data-i18n="ph.gallery"></span><input type="file" id="inPlGal" accept="image/*" multiple hidden></label>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" id="plDel" class="danger-btn" data-i18n="common.delete"></button>
+      <button type="button" id="plGo" data-i18n="pl.go"></button>
+      <span class="spacer"></span>
+      <button value="cancel" data-i18n="common.cancel"></button>
+      <button type="button" id="plOk" class="primary" data-i18n="common.save"></button>
+    </div>
+  </form>
 </dialog>
 <dialog id="askDlg">
   <form method="dialog" class="dlg ask">
