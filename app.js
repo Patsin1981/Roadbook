@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.6.1';
+  var APP_VER = '2.6.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1868,8 +1868,8 @@
           ls.forEach(function (im) { var hh = 80, ww = im.width * hh / im.height; g.drawImage(im, x, 14, ww, hh); x += ww + 16; });
           var tx = ls.length ? x + 10 : 24, font = '"Barlow Condensed", Tahoma, sans-serif';
           g.fillStyle = '#000'; g.textBaseline = 'top'; g.textAlign = 'left';
-          g.font = 'bold 40px ' + font; g.fillText('Overview ' + st.name, 24, 104);
-          g.font = '600 26px ' + font; g.fillText(fmtKm(lenOf(st) * fac(st) / 1000, CFG.navDec) + ' km' + (e.title ? '   ' + e.title : '') + (e.date ? '   ' + e.date : ''), tx, 22);
+          g.font = 'bold 40px ' + font; g.fillText('Overview ' + st.name + '   ' + fmtKm(lenOf(st) * fac(st) / 1000, CFG.navDec) + ' km', 24, 104);
+          g.font = '600 26px ' + font; g.fillText([e.title, e.date].filter(Boolean).join('   '), tx, 22);
           if (e.place) g.fillText(e.place, tx, 56);
           g.drawImage(map, 0, head);
           var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());

@@ -124,10 +124,10 @@
           c.value = x[1] || ''; cellStyle(c, { size: x[2], bold: x[3], border: false });
         });
         ov.mergeCells('B6:H6');
-        var tc = ov.getCell('B6'); tc.value = 'Overview ' + st.name; cellStyle(tc, { size: 18, bold: true, border: false });
+        var tc = ov.getCell('B6'); tc.value = 'Overview ' + st.name + '   ' + ((st._len || 0) * f / 1000).toFixed(cfg.navDec === 3 ? 3 : 2) + ' km'; cellStyle(tc, { size: 18, bold: true, border: false });
         ov.mergeCells('B7:H7');
         var sc = ov.getCell('B7');
-        sc.value = ((st._len || 0) * f / 1000).toFixed(cfg.navDec === 3 ? 3 : 2) + ' km' + (st.section ? '   Section ' + st.section : '');
+        sc.value = st.section ? 'Section ' + st.section : '';
         cellStyle(sc, { size: 12, border: false });
         // logos spread across the strip, keeping their proportions
         var logos = ev.logos || [], stripW = 7 * 11 * 7.2, gapX = 12, hh = 64;
