@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.6.2';
+  var APP_VER = '2.6.3';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -1613,10 +1613,40 @@
   sat.on('load tileload', function () { if (S.sat) applyImgOff(); });
 
   // ---------- Files ----------
-  function download(name, text, mime) {
-    var blob = new Blob([text], { type: mime }), a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  function download(name, text, mime) { return saveBlob(name, new Blob([text], { type: mime })); }
+  // Every exported file goes through here. On a phone a file made after a wait (map pictures, Excel) is often
+  // dropped silently, because the browser no longer counts it as the user's tap. So on a phone the file is
+  // offered in a dialog: one tap opens the phone's share sheet (LINE, Drive, Files = save), the other saves it
+  // to Downloads. A computer saves straight away.
+  function saveDirect(name, blob) {
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+  function shareFile(name, blob) {
+    if (!navigator.canShare || !window.File) return null;
+    var types = [blob.type, /\.(gpx|kml|json|csv|txt)$/i.test(name) ? 'text/plain' : null, 'application/octet-stream'];
+    for (var i = 0; i < types.length; i++) {
+      if (!types[i]) continue;
+      try { var f = new File([blob], name, { type: types[i] }); if (navigator.canShare({ files: [f] })) return f; } catch (e) {}
+    }
+    return null;
+  }
+  function saveBlob(name, blob) {
+    var phone = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!phone) { saveDirect(name, blob); return Promise.resolve(true); }
+    var f = shareFile(name, blob), mb = blob.size / 1048576;
+    var size = mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(blob.size / 1024)) + ' KB';
+    var ch = [{ v: 'dl', label: t('save.download'), note: t('save.downloadNote') }];
+    if (f) ch.unshift({ v: 'share', label: t('save.share'), note: t('save.shareNote'), primary: true });
+    else ch[0].primary = true;
+    return ask({ title: t('save.title'), body: name + '  (' + size + ')', choices: ch }).then(function (r) {
+      if (r === 'share') return navigator.share({ files: [f], title: name }).then(function () { return true; }).catch(function (e) {
+        if (e && e.name === 'AbortError') return false; // closed the share sheet
+        saveDirect(name, blob); return true;
+      });
+      if (r === 'dl') { saveDirect(name, blob); toast(t('save.inDownloads'), 4000); return true; }
+      return false;
+    });
   }
   function safeName(s) { return String(s).replace(/[\\/:*?"<>|]+/g, '_').trim() || 'roadbook'; }
   function guessType(name) {
@@ -1874,9 +1904,8 @@
           g.drawImage(map, 0, head);
           var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
           cv.toBlob(function (blob) {
-            var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = safeName(st.name) + '_overview_' + day + '.png';
-            document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-            toast(map.missingTiles ? t('ov.partial') : t('ov.done'), map.missingTiles ? 6000 : 3000);
+            if (map.missingTiles) toast(t('ov.partial'), 6000);
+            saveBlob(safeName(st.name) + '_overview_' + day + '.png', blob);
           }, 'image/png');
         });
     }).catch(function () { toast(t('ov.fail'), 5000); });
@@ -1963,9 +1992,8 @@
         var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
         cv.toBlob(function (blob) {
           if (!blob) return toast(t('evo.tooBig'), 6000);
-          var el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = safeName(P.name) + '_overview_all_' + day + '.jpg';
-          document.body.appendChild(el); el.click(); setTimeout(function () { URL.revokeObjectURL(el.href); el.remove(); }, 3000);
           toast(map.missingTiles ? t('ov.partial') : t('evo.done', { w: cv.width, h: cv.height, mb: (blob.size / 1048576).toFixed(1) }), 7000);
+          saveBlob(safeName(P.name) + '_overview_all_' + day + '.jpg', blob);
         }, 'image/jpeg', 0.9);
       }).catch(function () { toast(t('ov.fail'), 5000); });
     });
@@ -2077,10 +2105,9 @@
         }).then(function (buf) { if (missing) setTimeout(function () { toast(t('ov.partial'), 6000); }, 3600); return buf; });
     }).then(function (buf) {
       var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = safeName(P.name) + '_roadbook_' + day + '.xlsx'; document.body.appendChild(a); a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       toast(t('xl.done', { n: P.stages.length }), 3500);
+      saveBlob(safeName(P.name) + '_roadbook_' + day + '.xlsx', blob);
     }).catch(function (e) { toast(t('xl.fail') + (e && e.message ? ' (' + e.message + ')' : ''), 6000); })
       .then(function () { btn.disabled = false; });
   }
@@ -2099,8 +2126,9 @@
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
       if (!list) return;
-      download(safeName(P.name) + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml');
-      ask({ title: t('kml.title'), body: t('kml.body'), ok: t('kml.open') }).then(function (ok) { if (ok) window.open('https://www.google.com/maps/d/', '_blank', 'noopener'); });
+      download(safeName(P.name) + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml').then(function (ok) {
+      if (ok) ask({ title: t('kml.title'), body: t('kml.body'), ok: t('kml.open') }).then(function (ok) { if (ok) window.open('https://www.google.com/maps/d/', '_blank', 'noopener'); });
+      });
     });
   };
 
