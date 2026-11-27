@@ -23,6 +23,7 @@
     <button role="tab" data-mode="rec" aria-selected="false" data-i18n="mode.rec"></button>
     <button role="tab" data-mode="nav" aria-selected="false" data-i18n="mode.nav"></button>
   </div>
+  <select id="bookSel" hidden data-i18n-aria="book.select"></select>
   <select id="stageSel" data-i18n-aria="stage.select"></select>
   <button id="bSet" class="gear" data-i18n-aria="set.title"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
 </header>
@@ -165,6 +166,12 @@
         <h3 data-i18n="file.project"></h3>
         <label class="field"><span data-i18n="file.projName"></span><input id="projName"></label>
         <button id="bSortStages" data-i18n="order.btn"></button>
+      </div>
+      <div class="group">
+        <h3 data-i18n="book.head"></h3>
+        <p class="note" data-i18n="book.note"></p>
+        <div id="bookList"></div>
+        <button id="bBookAdd" data-i18n="book.add"></button>
         <button id="bNewProj" class="danger-btn" data-i18n="file.newProj"></button>
         <button id="bInstall" hidden class="primary" data-i18n="file.install"></button>
         <p class="note" id="storeNote"></p>
@@ -333,6 +340,24 @@
       <span class="spacer"></span>
       <button value="cancel" data-i18n="common.cancel"></button>
       <button type="button" id="plOk" class="primary" data-i18n="common.save"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="bookDlg">
+  <form method="dialog" class="dlg">
+    <h2 id="bookTitle" style="margin:0 0 8px"></h2>
+    <label class="field"><span data-i18n="book.name"></span><input id="bookName" autocomplete="off"></label>
+    <label class="field"><span data-i18n="book.order"></span><input id="bookOrder" inputmode="numeric" autocomplete="off" data-i18n-ph="book.orderPh"></label>
+    <p class="note" id="bookMapNote"></p>
+    <div class="field"><span data-i18n="book.legs"></span>
+      <div class="row2"><button type="button" id="bookAll" data-i18n="book.all"></button><button type="button" id="bookNone" data-i18n="book.none"></button></div>
+      <div id="bookLegs" class="book-legs"></div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" id="bookDel" class="danger-btn" data-i18n="common.delete"></button>
+      <span class="spacer"></span>
+      <button value="cancel" data-i18n="common.cancel"></button>
+      <button type="button" id="bookOk" class="primary" data-i18n="common.save"></button>
     </div>
   </form>
 </dialog>

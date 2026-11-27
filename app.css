@@ -402,3 +402,13 @@ body.night #stageSel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .pl-icons button[aria-pressed=true]{outline:3px solid var(--ink);outline-offset:-3px}
 #plPaste{flex:1;min-width:0}
 #placeHint{cursor:pointer;right:8px}
+
+/* books (v2.8) */
+#bookSel{flex:0 1 auto;max-width:34%;min-height:44px;border:1.5px solid var(--ink);background:var(--paper);border-radius:3px;padding:0 6px;font-family:var(--f);font-weight:700;font-size:17px;color:var(--ink)}
+#bookSel.on{background:var(--ink);color:var(--paper)}
+.book-legs{display:flex;flex-direction:column;gap:2px;max-height:46vh;overflow:auto;border:1px solid var(--line,#999);padding:4px;margin-top:6px}
+.book-legs label{display:flex;gap:8px;align-items:center;min-height:38px;font-size:15px}
+.book-legs label small{opacity:.7}
+.book-legs label.off{opacity:.55}
+.book-row{display:flex;gap:6px;align-items:center;margin:4px 0}
+.book-row b{flex:1}

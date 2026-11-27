@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.7.2';
+  var APP_VER = '2.8.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -182,6 +182,7 @@
   function pts(st) { return RB.sortedPoints(st); }
   function addStage(name, track, points) {
     var st = { id: uid(), name: name, kind: 'ss', track: track, factor: 1, tsd: [], points: points || [] };
+    if (typeof curBook === 'function' && curBook()) curBook().legs.push(st.id); // new legs join the book being worked on
     P.stages.push(st); save(); return st;
   }
   function nextStageName() { return 'SS' + (P.stages.length + 1); }
@@ -270,7 +271,7 @@
           if (S.mode === 'org' && !S.draw && !S.edit) L.polyline([a, b], { color: '#000', weight: 22, opacity: 0.01 }).on('click', function (e) { L.DomEvent.stop(e); joinGap(i); }).addTo(gTracks);
         }
       }
-      if (st.id === S.stageId || only) return;
+      if (st.id === S.stageId || only || !inBook(st)) return;
       L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
       L.polyline(st.track, { color: stageColor(st), weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks);
       // Free run / service legs have no name tag; tapping the line shows the name for a moment
@@ -405,11 +406,11 @@
   function nameLayout() {
     var z = map.getZoom(), out = [], placed = [];
     nameCtx.font = '700 15px "Barlow Condensed", ' + getComputedStyle(document.body).fontFamily;
-    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name && (CFG.allLines || !S.stageId || st.id === S.stageId); })
+    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name && inBook(st) && (CFG.allLines || !S.stageId || st.id === S.stageId); })
       .sort(function (a, b) { return (b.id === S.stageId) - (a.id === S.stageId); })
       .forEach(function (st) {
         var q = map.project(st.track[0], z), x = q.x + OFF, y = q.y + OFF;
-        var w = Math.ceil(nameCtx.measureText(st.name).width * 1.1) + 20, h = 22; // a little wider than measured: Thai falls back to another font
+        var w = Math.ceil(nameCtx.measureText(dispName(st)).width * 1.1) + 20, h = 22; // a little wider than measured: Thai falls back to another font
         var box = { x: x - w / 2, y: y - 9 - h, w: w, h: h + 9 };
         var show = st.id === S.stageId || !placed.some(function (b) { return rectsOverlap(b, box); });
         if (show) placed.push(box);
@@ -422,7 +423,7 @@
     if (S.draw || S.edit) return;
     nameLayout().forEach(function (n) {
       var sel = n.st.id === S.stageId, c = stageColor(n.st);
-      var html = n.show ? '<div class="ssn' + (sel ? ' sel' : '') + '" style="--c:' + c + '">' + RB.esc(n.st.name) + '</div>'
+      var html = n.show ? '<div class="ssn' + (sel ? ' sel' : '') + '" style="--c:' + c + '">' + RB.esc(dispName(n.st)) + '</div>'
         : '<div class="ssdot" style="--c:' + c + '"></div>';
       var m = L.marker(n.st.track[0], { keyboard: false, zIndexOffset: sel ? 400 : 300, icon: L.divIcon({ className: 'ssn-icon', html: html, iconSize: [0, 0], iconAnchor: [0, 0] }) }).addTo(gNames);
       // tapping another SS's tag selects that SS
@@ -471,7 +472,7 @@
       .concat(nameLayout().filter(function (n) { return n.show; }).map(function (n) { return n.box; })); // keep clear of SS name tags
     function attempt(mode, groups) {
       var items = groups.map(function (g) {
-        var code = g.map(function (b) { return b.p.code || b.p.type; }).join(' / ');
+        var code = g.map(function (b) { return dispCode(b.p) || b.p.type; }).join(' / ');
         var lines = mode === 'full' && g.length === 1 ? [fmtKm(g[0].p.d * f / 1000) + ' km'].concat(g[0].p.time ? [g[0].p.time] : []) : [];
         var sz = labelSize(code, lines), cx = 0, cy = 0;
         g.forEach(function (b) { cx += b.x; cy += b.y; });
@@ -560,7 +561,9 @@
   function renderStageSel() {
     var sel = $('stageSel'); sel.innerHTML = ''; sel.disabled = false;
     if (!P.stages.length) sel.innerHTML = '<option value="" disabled>' + RB.esc(t('stage.none')) + '</option>';
-    P.stages.forEach(function (st) {
+    renderBookSel();
+    var b = curBook();
+    (b ? bookStages(b) : P.stages).forEach(function (st) {
       var o = document.createElement('option'); o.value = st.id;
       o.textContent = st.name + '  ' + (lenOf(st) * fac(st) / 1000).toFixed(2) + ' km'; sel.appendChild(o);
     });
@@ -623,7 +626,7 @@
   function tagMain(p) {
     if (p.type === 'TULIP') return '';
     if (p.type === 'DANGER') return '<span class="tag DANGER">' + t('type.danger') + ' ' + '!'.repeat(p.danger || 1) + '</span>';
-    var txt = RB.isControl(p) ? (p.code || p.type) + (p.time ? '  ' + p.time : '') : typeName(p.type);
+    var txt = RB.isControl(p) ? (dispCode(p) || p.type) + (p.time ? '  ' + p.time : '') : typeName(p.type);
     return '<span class="tag ' + p.type + '">' + RB.esc(txt) + '</span>';
   }
   function symsHTML(p, size) {
@@ -669,7 +672,7 @@
 
   // ---------- Splitting into legs ----------
   function legName(sg) {
-    var lab = function (p) { return p ? (p.code || typeName(p.type)) : ''; };
+    var lab = function (p) { return p ? (dispCode(p) || typeName(p.type)) : ''; };
     if (sg.kind === 'ss') return lab(sg.startP) || 'SS';
     if (sg.kind === 'service') return t('kind.service');
     if (sg.kind === 'pf') return lab(sg.startP) || t('kind.pf');
@@ -715,7 +718,8 @@
       return '<tr><td><input inputmode="decimal" data-tsd="' + i + '" data-k="fromKm" value="' + s.fromKm + '"></td><td><input inputmode="decimal" data-tsd="' + i + '" data-k="kmh" value="' + s.kmh + '"></td><td><button data-tsddel="' + i + '">' + t('common.delete') + '</button></td></tr>';
     }).join('');
     el.innerHTML =
-      '<div class="group"><label class="field">' + t('stage.name') + '<input id="sName" value="' + RB.esc(st.name) + '"></label>' +
+      '<div class="group"><label class="field">' + t('stage.name') + '<input id="sName" value="' + RB.esc(dispName(st)) + '"></label>' +
+      (curBook() ? '<p class="note">' + RB.esc(t('book.nameNote', { b: curBook().name, n: st.name })) + '</p>' : '') +
       '<span class="set-lbl">' + t('kind.label') + '</span><div class="seg wide kinds">' + KINDS.map(function (k) {
         return '<button type="button" data-kind="' + k + '" aria-pressed="' + (kindOf(st) === k) + '"><i class="kdot" style="background:' + KIND_COLOR[k] + '"></i>' + t('kind.' + k) + '</button>';
       }).join('') + '</div>' +
@@ -723,6 +727,7 @@
       '<button type="button" id="sGo" class="go-btn">' + t('go.start') + '</button>' +
       '<div class="row2"><button type="button" id="sEdit">' + t('tool.edit') + '</button><button type="button" id="sSnap">' + t('tool.snap') + '</button></div>' +
       '<div class="row2"><button type="button" id="sReverse">' + t('tool.reverse') + '</button>' + (st.trackOrig ? '<button type="button" id="sRestore">' + t('tool.restore') + '</button>' : '<span></span>') + '</div>' +
+      '<button type="button" id="sCopy">' + t('copy.btn') + '</button>' +
       (P.stages[P.stages.indexOf(st) + 1] ? '<button type="button" id="sMerge">' + t('merge.next', { b: RB.esc(P.stages[P.stages.indexOf(st) + 1].name) }) + '</button>' : '') +
       '<div class="kv"><span>' + t('stage.lenGps') + '</span><b>' + (L0 / 1000).toFixed(3) + ' km</b><span>' + t('stage.lenAdj') + '</span><b>' + (L0 * f / 1000).toFixed(3) + ' km</b><span>' + t('stage.nPoints') + '</span><b>' + st.points.length + '</b></div></div>' +
 
@@ -749,7 +754,7 @@
       '<div class="group"><h3>Overview</h3><button id="sOverview">' + t('ov.png') + '</button><p class="note">' + t('ov.note') + '</p></div>' +
       '<div class="group"><button id="sDel" class="danger-btn">' + t('stage.delete') + '</button></div>';
 
-    $('sName').onchange = function () { st.name = this.value.trim() || st.name; save(); renderStageSel(); drawNames(); drawPins(); };
+    $('sName').onchange = function () { st.name = unmapText(this.value.trim()) || st.name; save(); renderStageSel(); drawNames(); drawPins(); };
     $('sSection').onchange = function () { st.section = this.value.trim(); save(); };
     $('sOverview').onclick = exportOverviewPng;
     $('sGo').onclick = function () { var a = stageStart(st); openDirections(a[0], a[1]); };
@@ -757,6 +762,7 @@
     $('sSnap').onclick = function () { snapStage(st); };
     $('sReverse').onclick = function () { reverseStage(st); };
     if ($('sMerge')) $('sMerge').onclick = function () { mergeNext(P.stages.indexOf(st), false); };
+    $('sCopy').onclick = function () { copyStage(st); };
     if ($('sRestore')) $('sRestore').onclick = function () {
       ask({ title: t('tool.restoreTitle'), body: t('tool.restoreBody'), ok: t('tool.restore') }).then(function (ok) { if (ok) { var o = st.trackOrig; delete st.trackOrig; setTrack(st, o, false); toast(t('tool.restored')); } });
     };
@@ -884,7 +890,7 @@
     });
     var fmap = { ptTh: 'th', ptEn: 'en', ptNote: 'note', ptCode: 'code', ptTime: 'time', ptPlace: 'place' };
     Object.keys(fmap).forEach(function (id) {
-      $(id).oninput = function () { D[fmap[id]] = id === 'ptCode' ? this.value.toUpperCase() : this.value; if (id === 'ptCode') DautoCode = false; };
+      $(id).oninput = function () { D[fmap[id]] = id === 'ptCode' ? unmapText(this.value.toUpperCase()) : this.value; if (id === 'ptCode') DautoCode = false; };
       $(id).onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); this.blur(); } };
     });
     $('ptSave').onclick = function () {
@@ -1179,7 +1185,7 @@
     $('ptKm').textContent = fmtKm(D.d * fac(st) / 1000);
     document.querySelectorAll('#ptTypes [data-type]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.type === D.type); });
     $('ptCtrl').hidden = !RB.isControl(D);
-    $('ptCode').value = D.code || ''; $('ptTime').value = D.time || '';
+    $('ptCode').value = dispCode(D) || ''; $('ptTime').value = D.time || '';
     $('ptDanger').hidden = false; $('ptLv0').hidden = D.type === 'DANGER'; // any box can carry ! / !! / !!!
     document.querySelectorAll('#ptDanger [data-lv]').forEach(function (b) { b.setAttribute('aria-pressed', +b.dataset.lv === RB.warnOf(D)); });
     document.querySelectorAll('#ptPresets [data-a]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.a === 'none' ? D.angle == null : +b.dataset.a === D.angle); });
@@ -1917,8 +1923,8 @@
   }
   $('bCsv').onclick = function () {
     if (!P.stages.length) return toast(t('err.noStage'));
-    var body = P.stages.map(function (st, i) { var c = RB.stageCSV(st); return i ? c.split('\r\n').slice(1).join('\r\n') : c; }).join('\r\n');
-    download(safeName(P.name) + '_roadbook.csv', '﻿' + body, 'text/csv;charset=utf-8');
+    var body = exportList().map(function (st, i) { var c = RB.stageCSV(st); return i ? c.split('\r\n').slice(1).join('\r\n') : c; }).join('\r\n');
+    download(fileBase() + '_roadbook.csv', '﻿' + body, 'text/csv;charset=utf-8');
   };
   // ---------- Event info & logos (per project; logos also kept in a library on this device) ----------
   var LOGO_KEY = 'rb.logos.v1', MAX_LOGOS = 5;
@@ -2009,6 +2015,7 @@
   function imgSize(src) { return new Promise(function (ok) { var im = new Image(); im.onload = function () { ok({ w: im.width, h: im.height }); }; im.onerror = function () { ok({ w: 100, h: 100 }); }; im.src = src; }); }
   function exportOverviewPng() {
     var st = stage(); if (!st) return toast(t('err.noStage'));
+    var bk = curBook(); if (bk) st = viewStage(st, bookMap(bk)); // names and codes as in this book
     toast(t('ov.building'), 8000);
     var e = ev(), W = 1200, head = 170;
     renderOverview(st, W, 1400).then(function (map) {
@@ -2040,7 +2047,7 @@
   var LEG_COLORS = ['#E6194B', '#3CB44B', '#FFB000', '#4363D8', '#F58231', '#911EB4', '#00B5C8', '#F032E6', '#7FBF00', '#C2185B', '#008080', '#9A6324', '#1A1A80'];
   function gpxPlaces() { return (P.places || []).map(function (pl) { return { lat: pl.lat, lon: pl.lon, name: placeTitle(pl), desc: pl.note || '', color: placeIcon(pl.icon)[2] }; }); }
   function exportEventOverview(layerIn, styleIn) {
-    var legs = driveOrder(P.stages).filter(function (st) { return st.track.length > 1; });
+    var legs = (curBook() ? bookStages(curBook()) : driveOrder(P.stages)).filter(function (st) { return st.track.length > 1; });
     if (!legs.length) return toast(t('err.noStage'));
     var pick = layerIn ? Promise.resolve(layerIn) : ask({ title: t('evo.title'), body: t('evo.body'), choices: [
       { v: 'sat', label: t('evo.sat'), note: t('evo.satNote'), primary: true }, { v: 'osm', label: t('evo.osm'), note: t('evo.osmNote') }] });
@@ -2101,7 +2108,7 @@
         g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
         g.fillStyle = '#000'; g.textBaseline = 'top'; g.textAlign = 'left';
         g.font = 'bold ' + Math.round(fs * 1.6) + 'px ' + font;
-        g.fillText((ev0.title || P.name || 'Rally') + '   Overview', fs, Math.round(fs * 0.6));
+        g.fillText((ev0.title || P.name || 'Rally') + (curBook() ? '   ' + curBook().name : '') + '   Overview', fs, Math.round(fs * 0.6));
         g.font = '600 ' + fs + 'px ' + font;
         var total = legs.reduce(function (sum, st) { return sum + lenOf(st) * fac(st); }, 0), ssKm = legs.filter(function (st) { return kindOf(st) === 'ss'; }).reduce(function (sum, st) { return sum + lenOf(st) * fac(st); }, 0);
         g.fillText([ev0.date, ev0.place, t('evo.total', { km: (total / 1000).toFixed(1), ss: (ssKm / 1000).toFixed(1) })].filter(Boolean).join('    '), fs, Math.round(fs * 2.4));
@@ -2118,7 +2125,7 @@
         cv.toBlob(function (blob) {
           if (!blob) return toast(t('evo.tooBig'), 6000);
           toast(map.missingTiles ? t('ov.partial') : t('evo.done', { w: cv.width, h: cv.height, mb: (blob.size / 1048576).toFixed(1) }), 7000);
-          saveBlob(safeName(P.name) + '_overview_all_' + day + '.jpg', blob);
+          saveBlob(fileBase() + '_overview_all_' + day + '.jpg', blob);
         }, 'image/jpeg', 0.9);
       }).catch(function () { toast(t('ov.fail'), 5000); });
     });
@@ -2212,7 +2219,7 @@
     }
     var btn = $('bXlsx'); btn.disabled = true; toast(t('xl.building'), 8000);
     loadScript('vendor/exceljs/exceljs.min.js').then(function () {
-      var stages = P.stages.map(function (st) { return Object.assign({}, st, { _len: lenOf(st) }); });
+      var stages = exportList().map(function (st) { return Object.assign({}, st, { _len: lenOf(st) }); });
       var e = ev(), missing = 0;
       return Promise.all(e.logos.map(function (src) { return imgSize(src).then(function (sz) { return { b64: src.split(',')[1], w: sz.w, h: sz.h }; }); }))
         .then(function (logos) {
@@ -2222,8 +2229,7 @@
             instr: function (p) { return instrText(p); },
             event: { title: e.title, date: e.date, place: e.place, logos: logos },
             overview: function (st) {
-              var real = P.stages.filter(function (x) { return x.id === st.id; })[0];
-              return renderOverview(real, 1080, 1300).then(function (cv) { if (cv.missingTiles) missing++; return { b64: canvasB64(cv), w: cv.width, h: cv.height }; })
+              return renderOverview(st, 1080, 1300).then(function (cv) { if (cv.missingTiles) missing++; return { b64: canvasB64(cv), w: cv.width, h: cv.height }; })
                 .catch(function () { return null; });
             }
           });
@@ -2232,7 +2238,7 @@
       var d = new Date(), day = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
       var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       toast(t('xl.done', { n: P.stages.length }), 3500);
-      saveBlob(safeName(P.name) + '_roadbook_' + day + '.xlsx', blob);
+      saveBlob(fileBase() + '_roadbook_' + day + '.xlsx', blob);
     }).catch(function (e) { toast(t('xl.fail') + (e && e.message ? ' (' + e.message + ')' : ''), 6000); })
       .then(function () { btn.disabled = false; });
   }
@@ -2241,7 +2247,7 @@
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
       if (!list) return;
-      download(safeName(P.name) + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true, colorOf: stageColor, places: gpxPlaces() }), 'application/gpx+xml');
+      download(fileBase() + '.gpx', RB.stageGPX(list, { controlsOnly: true, numbered: true, colorOf: stageColor, places: gpxPlaces() }), 'application/gpx+xml');
     });
   };
   $('bSortStages').onclick = function () { sortStagesAsk(false); };
@@ -2251,11 +2257,127 @@
     if (!P.stages.length) return toast(t('err.noStage'));
     sortStagesAsk(true).then(function (list) {
       if (!list) return;
-      download(safeName(P.name) + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, places: gpxPlaces(), kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml').then(function (ok) {
+      download(fileBase() + '.kml', RB.stageKML(list, { name: P.name, numbered: true, colorOf: stageColor, places: gpxPlaces(), kindName: function (st) { return t('kind.' + kindOf(st)); } }), 'application/vnd.google-earth.kml+xml').then(function (ok) {
       if (ok) ask({ title: t('kml.title'), body: t('kml.body'), ok: t('kml.open') }).then(function (ok) { if (ok) window.open('https://www.google.com/maps/d/', '_blank', 'noopener'); });
       });
     });
   };
+
+  // ---------- Books: one set of routes, one running order per group ----------
+  // P.books = [{id, name, order: [road SS numbers in the order this group runs them], legs: [stage ids]}].
+  // Roads, boxes and arrows are shared; a book renumbers "SS n" and "TC n" in names and codes by its order
+  // (TC n is the time control before SS n), keeps its own legs (its Free runs) and is exported on its own.
+  function books() { return P.books || (P.books = []); }
+  function curBook() { var id = P.curBook; if (!id) return null; return books().filter(function (b) { return b.id === id; })[0] || null; }
+  function bookMap(b) { var m = {}; (b && b.order || []).forEach(function (n, i) { m[n] = i + 1; }); return m; }
+  function mapText(s, m) {
+    if (!s || !m) return s;
+    return String(s).replace(/\b(SS|TC)(\s*)(\d+)/gi, function (all, k, sp, n) { return k + sp + (m[+n] != null ? m[+n] : n); });
+  }
+  function viewStage(st, m) {
+    var keys = ['code', 'place', 'th', 'en']; // any text that may name an SS or TC
+    return Object.assign({}, st, { name: mapText(st.name, m), points: (st.points || []).map(function (p) {
+      var q = null; keys.forEach(function (k) { if (p[k] && /\b(SS|TC)\s*\d/i.test(p[k])) { q = q || Object.assign({}, p); q[k] = mapText(p[k], m); } });
+      return q || p;
+    }) });
+  }
+  function bookStages(b) {
+    var m = bookMap(b), ids = b.legs || [];
+    return driveOrder(P.stages.filter(function (st) { return ids.indexOf(st.id) >= 0; }).map(function (st) { return viewStage(st, m); }));
+  }
+  // what the user types while a book is open is in that book's numbers: store it in the road numbers
+  function unmapText(s) {
+    var b = curBook(); if (!b || !s) return s;
+    var m = bookMap(b), inv = {}; Object.keys(m).forEach(function (k) { inv[m[k]] = +k; });
+    return String(s).replace(/\b(SS|TC)(\s*)(\d+)/gi, function (all, k, sp, n) { return k + sp + (inv[+n] != null ? inv[+n] : n); });
+  }
+  function inBook(st) { var b = curBook(); return !b || (b.legs || []).indexOf(st.id) >= 0; }
+  function dispName(st) { var b = curBook(); return b ? mapText(st.name, bookMap(b)) : st.name; }
+  function dispCode(p) { var b = curBook(); return b && p.code ? mapText(p.code, bookMap(b)) : p.code; }
+  function exportList() { var b = curBook(); return b ? bookStages(b) : P.stages; }
+  function fileBase() { var b = curBook(); return safeName(P.name + (b ? ' ' + b.name : '')); }
+  function renderBookSel() {
+    var sel = $('bookSel'), list = books();
+    sel.hidden = !list.length;
+    sel.innerHTML = '<option value="">' + RB.esc(t('book.allLegs')) + '</option>' + list.map(function (b) { return '<option value="' + b.id + '">' + RB.esc(b.name) + '</option>'; }).join('');
+    sel.value = curBook() ? P.curBook : ''; sel.classList.toggle('on', !!curBook());
+  }
+  $('bookSel').onchange = function () {
+    P.curBook = this.value || null; save();
+    var b = curBook();
+    if (b && (b.legs || []).indexOf(S.stageId) < 0) { var first = bookStages(b)[0]; if (first) S.stageId = first.id; }
+    renderAll(); toast(b ? t('book.on', { b: b.name }) : t('book.off'), 2500);
+  };
+  function renderBookList() {
+    $('bookList').innerHTML = books().map(function (b) {
+      return '<div class="book-row"><b>' + RB.esc(b.name) + '</b><small>' + (b.legs || []).length + ' ' + t('book.legsN') + '</small><button type="button" data-book="' + b.id + '">' + t('common.edit') + '</button></div>';
+    }).join('');
+  }
+  $('bookList').onclick = function (e) { var x = e.target.closest('[data-book]'); if (x) openBook(books().filter(function (b) { return b.id === x.dataset.book; })[0]); };
+  $('bBookAdd').onclick = function () {
+    // start from every leg and the SS numbers as they are now (1, 2, 3 ...); the user puts in this group's order
+    var nums = []; P.stages.forEach(function (st) { (st.name.match(/SS\s*(\d+)/gi) || []).forEach(function (x) { var n = +x.replace(/\D/g, ''); if (nums.indexOf(n) < 0) nums.push(n); }); });
+    nums.sort(function (a, b) { return a - b; });
+    openBook({ name: 'Group ' + (books().length + 1), order: nums, legs: P.stages.map(function (st) { return st.id; }) }, true);
+  };
+  var BK = null, bkOrig = null, bkNew = false;
+  function openBook(b, isNew) {
+    if (!b) return;
+    bkOrig = isNew ? null : b; bkNew = !!isNew; BK = JSON.parse(JSON.stringify(b));
+    $('bookTitle').textContent = t(isNew ? 'book.new' : 'book.edit');
+    $('bookName').value = BK.name || ''; $('bookOrder').value = (BK.order || []).join(' ');
+    $('bookDel').hidden = isNew; bookPreview(); $('bookDlg').showModal();
+  }
+  function bookPreview() {
+    var nums = ($('bookOrder').value.match(/\d+/g) || []).map(Number), m = {};
+    nums.forEach(function (n, i) { m[n] = i + 1; });
+    BK.order = nums;
+    var changed = nums.filter(function (n, i) { return n !== i + 1; }).map(function (n) { return 'SS' + n + ' → SS' + m[n]; });
+    var dup = nums.filter(function (n, i) { return nums.indexOf(n) !== i; });
+    $('bookMapNote').textContent = dup.length ? t('book.dup', { n: dup.join(', ') }) : changed.length ? t('book.map', { list: changed.join(',  ') }) : t('book.same');
+    $('bookLegs').innerHTML = driveOrder(P.stages.map(function (st) { return viewStage(st, m); })).map(function (v) {
+      var on = (BK.legs || []).indexOf(v.id) >= 0, real = P.stages.filter(function (x) { return x.id === v.id; })[0];
+      return '<label class="' + (on ? '' : 'off') + '"><input type="checkbox" data-leg="' + v.id + '"' + (on ? ' checked' : '') + '> <span><b>' + RB.esc(v.name) + '</b>' +
+        (v.name !== real.name ? '<br><small>' + RB.esc(t('book.was', { n: real.name })) + '</small>' : '') + '</span></label>';
+    }).join('');
+  }
+  $('bookOrder').oninput = bookPreview;
+  $('bookLegs').onchange = function (e) {
+    var c = e.target.closest('[data-leg]'); if (!c) return;
+    var id = c.dataset.leg; BK.legs = (BK.legs || []).filter(function (x) { return x !== id; }); if (c.checked) BK.legs.push(id);
+    c.closest('label').classList.toggle('off', !c.checked);
+  };
+  $('bookAll').onclick = function () { BK.legs = P.stages.map(function (st) { return st.id; }); bookPreview(); };
+  $('bookNone').onclick = function () { BK.legs = []; bookPreview(); };
+  $('bookOk').onclick = function () {
+    BK.name = $('bookName').value.trim() || 'Group'; bookPreview();
+    if (bkNew) { BK.id = 'bk' + uid(); books().push(BK); } else { var i = books().indexOf(bkOrig); if (i >= 0) P.books[i] = BK; }
+    save(); $('bookDlg').close(); renderAll();
+  };
+  $('bookDel').onclick = function () {
+    ask({ title: t('book.delTitle', { b: bkOrig.name }), body: t('book.delBody'), ok: t('common.delete'), danger: true }).then(function (ok) {
+      if (!ok) return;
+      P.books = books().filter(function (b) { return b !== bkOrig; }); if (P.curBook === bkOrig.id) P.curBook = null;
+      save(); $('bookDlg').close(); renderAll();
+    });
+  };
+  // ---------- Copy a leg (e.g. a Free run that only one group drives) ----------
+  function copyStage(st) {
+    ask({ title: t('copy.title'), input: dispName(st) + ' (2)', label: t('copy.name') }).then(function (name) {
+      if (!name || !name.trim()) return null;
+      return ask({ title: t('copy.what'), choices: [{ v: 'all', label: t('copy.all'), note: t('copy.allNote'), primary: true }, { v: 'line', label: t('copy.line'), note: t('copy.lineNote') }] })
+        .then(function (what) { return what ? { name: name.trim(), what: what } : null; });
+    }).then(function (o) {
+      if (!o) return;
+      var c = JSON.parse(JSON.stringify(st));
+      c.id = 's' + uid(); c.name = unmapText(o.name); delete c.trackOrig;
+      if (o.what === 'line') { c.points = []; c.tsd = []; } else c.points.forEach(function (p) { p.id = 'p' + uid(); });
+      c.track = st.track.map(function (q) { return q.slice(); });
+      P.stages.splice(P.stages.indexOf(st) + 1, 0, c);
+      var b = curBook(); if (b) b.legs.push(c.id); // made while working on a book: it belongs to that book
+      save(); selectStage(c.id, false); toast(t('copy.done', { n: c.name }), 3000);
+    });
+  }
 
   // ---------- Running order of the legs ----------
   // From the SS numbers in the names: "SS3 ..." runs at 3, "Free run SS3 to SS4" just after SS3,
@@ -2267,7 +2389,8 @@
       var n = st.name || '', parts = n.split(/\s+(?:to|ไป|→|->)\s+/i), k = null;
       if (parts.length > 1) {
         var a = num(parts[0]), b = num(parts.slice(1).join(' '));
-        k = a != null ? a + 0.5 : b != null ? b - 0.5 : null;
+        // "SS4 to SS5" sits between them; "SS4 to Service" comes before it and "Service to SS5" after it
+        k = a != null && b != null ? a + 0.5 : a != null ? a + 0.3 : b != null ? b - 0.3 : null;
       } else k = num(n);
       return { st: st, i: i, k: k };
     });
@@ -2288,6 +2411,7 @@
   }
   // shows the running order; resolves with the list to use (forExport: the file can use it without changing the project)
   function sortStagesAsk(forExport) {
+    if (forExport && curBook()) return Promise.resolve(bookStages(curBook())); // a book is already in its running order
     var list = driveOrder(P.stages), same = list.every(function (st, i) { return st === P.stages[i]; });
     if (same) { if (!forExport) toast(t('order.same')); return Promise.resolve(list); }
     var w = String(list.length).length < 2 ? 2 : String(list.length).length;
@@ -2902,7 +3026,7 @@
 
   // ---------- Render all ----------
   function renderAll() {
-    RB.setMySym(P.mySym); drawPlaces();
+    RB.setMySym(P.mySym); drawPlaces(); renderBookList();
     $('projName').value = P.name || '';
     $('storeNote').textContent = store.mem ? t('file.storeMem') : t('file.storeOk');
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();
