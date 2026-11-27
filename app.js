@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.7.1';
+  var APP_VER = '2.7.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -257,9 +257,12 @@
     gTracks.clearLayers();
     // every leg in its WRC colour; where one leg ends away from where the next starts (recording paused at
     // service / parc fermé) a thin dashed grey line shows the connection — it is never counted as distance
+    // "All lines" off (default): only the selected leg is drawn, so lines that share roads don't get in the way;
+    // the dashed links to the legs before and after it stay, they are where a Free run gets joined on
+    var only = !CFG.allLines && S.stageId;
     P.stages.forEach(function (st, i) {
       var nx = P.stages[i + 1];
-      if (nx && st.track.length && nx.track.length) {
+      if (nx && st.track.length && nx.track.length && (!only || st.id === S.stageId || nx.id === S.stageId)) {
         var a = st.track[st.track.length - 1], b = nx.track[0], gap = RB.hav(a, b);
         if (gap > 20 && gap < 50000) {
           L.polyline([a, b], { color: '#555', weight: 2, dashArray: '4 6', opacity: .8, interactive: false }).addTo(gTracks);
@@ -267,7 +270,7 @@
           if (S.mode === 'org' && !S.draw && !S.edit) L.polyline([a, b], { color: '#000', weight: 22, opacity: 0.01 }).on('click', function (e) { L.DomEvent.stop(e); joinGap(i); }).addTo(gTracks);
         }
       }
-      if (st.id === S.stageId) return;
+      if (st.id === S.stageId || only) return;
       L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
       L.polyline(st.track, { color: stageColor(st), weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks);
       // Free run / service legs have no name tag; tapping the line shows the name for a moment
@@ -297,6 +300,11 @@
     map.getContainer().style.cursor = on ? 'crosshair' : '';
   }
   $('fPlace').onclick = function () { setPlaceMode(!S.placeMode); };
+  $('fAllLines').onclick = function () {
+    CFG.allLines = !CFG.allLines; saveCfg(); this.setAttribute('aria-pressed', !!CFG.allLines);
+    drawTracks(); toast(t(CFG.allLines ? 'lines.all' : 'lines.one'), 2000);
+  };
+  $('fAllLines').setAttribute('aria-pressed', !!CFG.allLines);
   // the hint itself: no tapping on the map, take a pasted link / coordinates instead (starts at the map centre)
   $('placeHint').onclick = function () { var c = map.getCenter(); setPlaceMode(false); openPlace({ lat: c.lat, lon: c.lng }, true, true); };
   function drawPlaces() {
@@ -397,7 +405,7 @@
   function nameLayout() {
     var z = map.getZoom(), out = [], placed = [];
     nameCtx.font = '700 15px "Barlow Condensed", ' + getComputedStyle(document.body).fontFamily;
-    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name; })
+    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name && (CFG.allLines || !S.stageId || st.id === S.stageId); })
       .sort(function (a, b) { return (b.id === S.stageId) - (a.id === S.stageId); })
       .forEach(function (st) {
         var q = map.project(st.track[0], z), x = q.x + OFF, y = q.y + OFF;
