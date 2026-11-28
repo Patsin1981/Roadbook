@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.8.4';
+  var APP_VER = '2.8.5';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -261,9 +261,14 @@
     var tr = st.track, col = stageColor(st);
     if (kindOf(st) !== 'ss' || tr.length < 2) return [{ track: tr, color: col, ss: kindOf(st) === 'ss' }];
     var cum = cumOf(st), L0 = cum[cum.length - 1], ps = st.points || [];
-    var st0 = ps.filter(function (p) { return p.type === 'START'; }).map(function (p) { return p.d; });
-    var fin = ps.filter(function (p) { return p.type === 'FINISH'; }).map(function (p) { return p.d; });
-    var a = st0.length ? Math.min.apply(null, st0) : 0, b = fin.length ? Math.max.apply(null, fin) : L0;
+    // the SS ends at the first FINISH after its START: a FINISH box, or any control whose code says FINISH / STOP
+    // (a box set to another type by mistake, e.g. Regroup in with code "SS3, SS7 FINISH", still counts)
+    var isStart = function (p) { return p.type === 'START'; };
+    var isFin = function (p) { return p.type === 'FINISH' || (RB.isControl(p) && /FINISH|STOP/i.test(p.code || '')); };
+    var st0 = ps.filter(isStart).map(function (p) { return p.d; });
+    var a = st0.length ? Math.min.apply(null, st0) : 0;
+    var fin = ps.filter(function (p) { return isFin(p) && p.d > a + 30; }).map(function (p) { return p.d; });
+    var b = fin.length ? Math.min.apply(null, fin) : L0;
     if (b <= a) return [{ track: tr, color: col, ss: true }];
     var cut = function (from, to) {
       var out = [RB.pointAt(tr, cum, from)];
