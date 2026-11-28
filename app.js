@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.8.1';
+  var APP_VER = '2.8.2';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -282,10 +282,10 @@
     // service / parc fermé) a thin dashed grey line shows the connection — it is never counted as distance
     // "All lines" off (default): only the selected leg is drawn, so lines that share roads don't get in the way;
     // the dashed links to the legs before and after it stay, they are where a Free run gets joined on
-    var only = !CFG.allLines && S.stageId;
+    var only = !CFG.allLines && S.stageId, extra = shownLegs();
     P.stages.forEach(function (st, i) {
       var nx = P.stages[i + 1];
-      if (nx && st.track.length && nx.track.length && (!only || st.id === S.stageId || nx.id === S.stageId)) {
+      if (nx && st.track.length && nx.track.length && (!only || st.id === S.stageId || nx.id === S.stageId || (extra[st.id] && extra[nx.id]))) {
         var a = st.track[st.track.length - 1], b = nx.track[0], gap = RB.hav(a, b);
         if (gap > 20 && gap < 50000) {
           L.polyline([a, b], { color: '#555', weight: 2, dashArray: '4 6', opacity: .8, interactive: false }).addTo(gTracks);
@@ -293,7 +293,7 @@
           if (S.mode === 'org' && !S.draw && !S.edit) L.polyline([a, b], { color: '#000', weight: 22, opacity: 0.01 }).on('click', function (e) { L.DomEvent.stop(e); joinGap(i); }).addTo(gTracks);
         }
       }
-      if (st.id === S.stageId || only || !inBook(st)) return;
+      if (st.id === S.stageId || (only && !extra[st.id]) || !inBook(st)) return;
       L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
       legPieces(st).forEach(function (pc) { L.polyline(pc.track, { color: pc.color, weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks); });
       // Free run / service legs have no name tag; tapping the line shows the name for a moment
@@ -323,11 +323,38 @@
     map.getContainer().style.cursor = on ? 'crosshair' : '';
   }
   $('fPlace').onclick = function () { setPlaceMode(!S.placeMode); };
-  $('fAllLines').onclick = function () {
-    CFG.allLines = !CFG.allLines; saveCfg(); this.setAttribute('aria-pressed', !!CFG.allLines);
-    drawTracks(); toast(t(CFG.allLines ? 'lines.all' : 'lines.one'), 2000);
+  // "Lines" button: the selected leg is always drawn; tick other legs to draw them with it (kept with the project)
+  function shownLegs() { var m = {}; (P.showLegs || []).forEach(function (id) { m[id] = 1; }); return m; }
+  function linesBtn() {
+    var n = (P.showLegs || []).filter(function (id) { return id !== S.stageId && P.stages.some(function (st) { return st.id === id; }); }).length;
+    $('fAllLines').textContent = CFG.allLines ? t('lines.btnAll') : n ? t('lines.btnN', { n: n + 1 }) : t('fab.allLines');
+    $('fAllLines').setAttribute('aria-pressed', !!CFG.allLines || n > 0);
+  }
+  function linesFill() {
+    var list = curBook() ? bookStages(curBook()) : P.stages, on = shownLegs();
+    $('linesList').innerHTML = '<label><input type="checkbox" id="linesEvery"' + (CFG.allLines ? ' checked' : '') + '> <b>' + t('lines.every') + '</b></label>' +
+      list.map(function (st) {
+        var sel = st.id === S.stageId;
+        return '<label class="' + (CFG.allLines ? 'off' : '') + '"><input type="checkbox" data-line="' + st.id + '"' + (sel || on[st.id] ? ' checked' : '') + (sel || CFG.allLines ? ' disabled' : '') + '> <span><i class="kdot" style="background:' + stageColor(st) + '"></i> ' +
+          RB.esc(st.name) + (sel ? ' <small>(' + t('lines.current') + ')</small>' : '') + '</span></label>';
+      }).join('');
+  }
+  function linesApply() { save(); saveCfg(); linesBtn(); drawTracks(); }
+  $('fAllLines').onclick = function () { linesFill(); $('linesDlg').showModal(); };
+  $('linesList').onchange = function (e) {
+    if (e.target.id === 'linesEvery') { CFG.allLines = e.target.checked; linesFill(); return linesApply(); }
+    var c = e.target.closest('[data-line]'); if (!c) return;
+    var id = c.dataset.line; P.showLegs = (P.showLegs || []).filter(function (x) { return x !== id; }); if (c.checked) P.showLegs.push(id);
+    linesApply();
   };
-  $('fAllLines').setAttribute('aria-pressed', !!CFG.allLines);
+  $('linesNear').onclick = function () { // the legs before and after the selected one, in running order
+    var list = curBook() ? bookStages(curBook()) : driveOrder(P.stages), i = list.map(function (st) { return st.id; }).indexOf(S.stageId);
+    CFG.allLines = false; P.showLegs = [list[i - 1], list[i + 1]].filter(Boolean).map(function (st) { return st.id; });
+    linesFill(); linesApply();
+  };
+  $('linesAll').onclick = function () { CFG.allLines = true; linesFill(); linesApply(); };
+  $('linesNone').onclick = function () { CFG.allLines = false; P.showLegs = []; linesFill(); linesApply(); };
+  linesBtn();
   // the hint itself: no tapping on the map, take a pasted link / coordinates instead (starts at the map centre)
   $('placeHint').onclick = function () { var c = map.getCenter(); setPlaceMode(false); openPlace({ lat: c.lat, lon: c.lng }, true, true); };
   function drawPlaces() {
@@ -428,7 +455,7 @@
   function nameLayout() {
     var z = map.getZoom(), out = [], placed = [];
     nameCtx.font = '700 15px "Barlow Condensed", ' + getComputedStyle(document.body).fontFamily;
-    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name && inBook(st) && (CFG.allLines || !S.stageId || st.id === S.stageId); })
+    P.stages.filter(function (st) { return kindOf(st) === 'ss' && st.track.length > 1 && st.name && inBook(st) && (CFG.allLines || !S.stageId || st.id === S.stageId || shownLegs()[st.id]); })
       .sort(function (a, b) { return (b.id === S.stageId) - (a.id === S.stageId); })
       .forEach(function (st) {
         var q = map.project(st.track[0], z), x = q.x + OFF, y = q.y + OFF;
@@ -3054,7 +3081,7 @@
 
   // ---------- Render all ----------
   function renderAll() {
-    RB.setMySym(P.mySym); drawPlaces(); renderBookList();
+    RB.setMySym(P.mySym); drawPlaces(); renderBookList(); linesBtn();
     $('projName').value = P.name || '';
     $('storeNote').textContent = store.mem ? t('file.storeMem') : t('file.storeOk');
     renderStageSel(); drawTracks(); drawPins(); drawSuggest(); renderRB(); renderStagePanel(); renderNav(); renderRec(); renderEvent();

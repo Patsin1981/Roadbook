@@ -412,3 +412,4 @@ body.night #stageSel{background-image:url("data:image/svg+xml,%3Csvg xmlns='http
 .book-legs label.off{opacity:.55}
 .book-row{display:flex;gap:6px;align-items:center;margin:4px 0}
 .book-row b{flex:1}
+.book-legs .kdot{display:inline-block;vertical-align:-1px}
