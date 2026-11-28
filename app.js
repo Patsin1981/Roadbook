@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.9.0';
+  var APP_VER = '2.9.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -201,7 +201,7 @@
     if (on) { map.removeLayer(osm); sat.addTo(map); } else { map.removeLayer(sat); osm.addTo(map); }
     $('fLayer').textContent = on ? t('fab.map') : t('fab.sat');
     $('fImgOff').hidden = !on;
-    applyImgOff();
+    applyImgOff(); if ($('ptDlg').open) drawPtMap();
   }
   $('fLayer').onclick = function () { setLayer(!S.sat); };
   $('fFit').onclick = fitStage;
@@ -963,7 +963,7 @@
     document.querySelectorAll('[data-nudge]').forEach(function (b) {
       b.onclick = function () {
         var st = stage(), f = fac(st), nd = Math.max(0, Math.min(lenOf(st), D.d + (+b.dataset.nudge) / f));
-        var p = RB.pointAt(st.track, cumOf(st), nd); D.d = nd; D.lat = p[0]; D.lon = p[1]; refreshShape(st, D); syncDlg(); showDraft();
+        var p = RB.pointAt(st.track, cumOf(st), nd); D.d = nd; D.lat = p[0]; D.lon = p[1]; refreshShape(st, D); syncDlg(); showDraft(); drawPtMap();
       };
     });
     var fmap = { ptTh: 'th', ptEn: 'en', ptNote: 'note', ptCode: 'code', ptTime: 'time', ptPlace: 'place' };
@@ -1257,8 +1257,49 @@
     var dlg = $('ptDlg'); dlg.classList.remove('mini', 'sheet-full'); $('ptMini').textContent = t('pt.viewMap');
     var hd = document.querySelector('header'); dlg.style.top = innerWidth >= 900 && hd ? Math.round(hd.getBoundingClientRect().bottom) + 'px' : '';
     dlg.show(); dlg.scrollTop = 0;
-    requestAnimationFrame(function () { ptReveal(D); });
+    requestAnimationFrame(function () { ptReveal(D); drawPtMap(); });
   }
+  // ---------- Map around the box, turned so the way in points up (like the tulip) ----------
+  var PZ = 18, pmImgs = {};
+  function pmTile(url) {
+    if (pmImgs[url]) return pmImgs[url];
+    return (pmImgs[url] = new Promise(function (ok) { var im = new Image(); im.crossOrigin = 'anonymous'; im.onload = function () { ok(im); }; im.onerror = function () { ok(null); }; im.src = url; }));
+  }
+  function drawPtMap() {
+    var cv = $('ptMap'); if (!cv || !D || !$('ptDlg').open) return;
+    var st = stage(); if (!st || st.track.length < 2) return;
+    var g = cv.getContext('2d'), W = cv.width, H = cv.height, cum = cumOf(st), L0 = cum[cum.length - 1];
+    var d = Math.max(0, Math.min(L0, D.d)), a = RB.pointAt(st.track, cum, Math.max(0, d - 30)), b = RB.pointAt(st.track, cum, Math.max(d, Math.min(L0, Math.max(d, 30))));
+    if (d < 30) { a = RB.pointAt(st.track, cum, d); b = RB.pointAt(st.track, cum, Math.min(L0, d + 30)); }
+    var head = RB.bearing(a, b), rot = -head * Math.PI / 180, layer = S.sat ? 'sat' : 'osm', Ly = RBO.LAYERS[layer];
+    var z = Math.min(PZ, Ly.max), c = RBO.project(D.lat, D.lon, z), R = Math.ceil(Math.hypot(W, H) / 2) + 2;
+    var sh = S.sat ? offsetAt(D.lat, D.lon) : null, ppm = Math.pow(2, z) / (156543.03392 * Math.cos(D.lat * Math.PI / 180));
+    var shx = sh ? sh.e * ppm : 0, shy = sh ? -sh.n * ppm : 0, T = 256, jobs = [], my = drawPtMap.n = (drawPtMap.n || 0) + 1;
+    var tx0 = Math.floor((c.x - R) / T), tx1 = Math.floor((c.x + R) / T), ty0 = Math.floor((c.y - R) / T), ty1 = Math.floor((c.y + R) / T), max = Math.pow(2, z);
+    for (var tx = tx0; tx <= tx1; tx++) for (var ty = ty0; ty <= ty1; ty++) (function (tx, ty) {
+      jobs.push(pmTile(Ly.url.replace('{z}', z).replace('{x}', ((tx % max) + max) % max).replace('{y}', ty)).then(function (im) { return { im: im, x: tx * T - c.x + shx, y: ty * T - c.y + shy }; }));
+    })(tx, ty);
+    Promise.all(jobs).then(function (tiles) {
+      if (my !== drawPtMap.n) return; // a newer drawing started
+      g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#e8e4da'; g.fillRect(0, 0, W, H);
+      g.translate(W / 2, H * 0.58); g.rotate(rot);
+      tiles.forEach(function (tl) { if (tl.im) g.drawImage(tl.im, tl.x, tl.y, T + 0.5, T + 0.5); });
+      var px = function (q) { var p = RBO.project(q[0], q[1], z); return [p.x - c.x, p.y - c.y]; };
+      var near = st.track.filter(function (q, i) { return Math.abs(cum[i] - d) < 900; }).map(px);
+      g.lineJoin = 'round'; g.lineCap = 'round';
+      [['#fff', 9], [stageColor(st), 5]].forEach(function (s2) { g.strokeStyle = s2[0]; g.lineWidth = s2[1]; g.beginPath(); near.forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.stroke(); });
+      g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, 9, 0, 7); g.fill(); g.stroke();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      // the way in, pointing up, like the foot of the tulip
+      g.fillStyle = 'rgba(0,0,0,.75)'; g.beginPath(); g.moveTo(W / 2, H * 0.58 + 26); g.lineTo(W / 2 - 9, H * 0.58 + 44); g.lineTo(W / 2 + 9, H * 0.58 + 44); g.closePath(); g.fill();
+      // north
+      g.save(); g.translate(28, 28); g.rotate(rot); g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(0, 0, 20, 0, 7); g.fill();
+      g.fillStyle = '#D0021B'; g.beginPath(); g.moveTo(0, -16); g.lineTo(6, 2); g.lineTo(-6, 2); g.closePath(); g.fill();
+      g.fillStyle = '#000'; g.font = 'bold 12px sans-serif'; g.textAlign = 'center'; g.fillText('N', 0, 14); g.restore();
+    });
+  }
+  document.querySelector('.ptmap-ctl').onclick = function (e) { var b = e.target.closest('[data-pz]'); if (!b) return; PZ = Math.max(15, Math.min(19, PZ + +b.dataset.pz)); drawPtMap(); };
+
   // put the box in the middle of the part of the map the editor does not cover
   function ptReveal(p) {
     if (!p || !$('ptDlg').open) return;
