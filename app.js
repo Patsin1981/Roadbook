@@ -1031,7 +1031,66 @@
     var a = $('padArea'), z = Math.floor(Math.min(a.clientWidth, a.clientHeight));
     a.style.setProperty('--pz', z + 'px');
     $('padBg').innerHTML = RB.tulipOf(D, { size: z, ink: '#000', noDraw: true });
+    padMapDraw();
   }
+  // The real ground under the tulip, turned the same way: the box sits where the tulip's lines meet and the way
+  // in points down to the start dot. A "real road" tulip uses its own fit to the GPS line, so it lines up exactly;
+  // other tulips use 100 tulip units = CFG.padMapM metres (− / + changes it). Only a guide: never printed.
+  function padMapDraw() {
+    var cv = $('padMap'), on = CFG.padMap !== false; $('pad').classList.toggle('withmap', on);
+    $('padMapBtn').setAttribute('aria-pressed', on); cv.hidden = !on; $('padMapOp').value = CFG.padMapOp || 55;
+    if (!on || !PD || !D) return;
+    var st = stage(); if (!st || st.track.length < 2) return;
+    var z = Math.floor(parseFloat(getComputedStyle($('padArea')).getPropertyValue('--pz')) || 300), dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = cv.height = Math.round(z * dpr); cv.style.opacity = (CFG.padMapOp || 55) / 100;
+    var g = cv.getContext('2d'), W = cv.width, cum = cumOf(st), L0 = cum[cum.length - 1], d = Math.max(0, Math.min(L0, D.d));
+    // lat/lon → tulip units
+    var toU, M = CFG.padMapM || 120;
+    var shp = D.curve === 'gps' ? RB.roadShape(st.track, cum, d, (D.shape && D.shape.len) || 200) : null;
+    if (shp && shp.tf) toU = function (la, lo) { return RB.shapeXY(shp.tf, la, lo); };
+    else {
+      var a = RB.pointAt(st.track, cum, Math.max(0, d - 30)), b = RB.pointAt(st.track, cum, Math.min(L0, Math.max(d, 30)));
+      if (d < 30) { a = RB.pointAt(st.track, cum, d); b = RB.pointAt(st.track, cum, Math.min(L0, d + 30)); }
+      var h = RB.bearing(a, b) * Math.PI / 180, ch = Math.cos(h), sh = Math.sin(h), kx = 111320 * Math.cos(D.lat * Math.PI / 180), ky = 110540;
+      toU = function (la, lo) { var x = (lo - D.lon) * kx, y = (la - D.lat) * ky; return [(x * ch - y * sh) / M * 100, -(x * sh + y * ch) / M * 100]; };
+    }
+    var toC = function (u) { return [(u[0] + 50) * W / 100, (u[1] + 50) * W / 100]; };
+    // affine map from Mercator pixels (zoom Z) to canvas pixels, from three nearby points
+    var layer = S.sat ? 'sat' : 'osm', Ly = RBO.LAYERS[layer], off = S.sat ? offsetAt(D.lat, D.lon) : null;
+    var p0 = [D.lat, D.lon], p1 = [D.lat, D.lon + 0.0005], p2 = [D.lat + 0.0005, D.lon];
+    var c0 = toC(toU(p0[0], p0[1])), c1 = toC(toU(p1[0], p1[1])), c2 = toC(toU(p2[0], p2[1]));
+    var cpm = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) / (0.0005 * 111320 * Math.cos(D.lat * Math.PI / 180)); // canvas px per metre
+    var Z = Ly.max; for (; Z > 12; Z--) { if (Math.pow(2, Z) / (156543.03392 * Math.cos(D.lat * Math.PI / 180)) < cpm * 1.2) { Z = Math.min(Ly.max, Z + 1); break; } }
+    var m0 = RBO.project(p0[0], p0[1], Z), m1 = RBO.project(p1[0], p1[1], Z), m2 = RBO.project(p2[0], p2[1], Z);
+    // solve c = A·m + t
+    var ax = m1.x - m0.x, ay = m1.y - m0.y, bx = m2.x - m0.x, by = m2.y - m0.y, det = ax * by - ay * bx;
+    if (!det) return;
+    var A11 = ((c1[0] - c0[0]) * by - (c2[0] - c0[0]) * ay) / det, A12 = ((c2[0] - c0[0]) * ax - (c1[0] - c0[0]) * bx) / det;
+    var A21 = ((c1[1] - c0[1]) * by - (c2[1] - c0[1]) * ay) / det, A22 = ((c2[1] - c0[1]) * ax - (c1[1] - c0[1]) * bx) / det;
+    var ppm = Math.pow(2, Z) / (156543.03392 * Math.cos(D.lat * Math.PI / 180)), shx = off ? off.e * ppm : 0, shy = off ? -off.n * ppm : 0;
+    var T = 256, R = W / cpm * ppm, max = Math.pow(2, Z), jobs = [], my = padMapDraw.n = (padMapDraw.n || 0) + 1;
+    for (var tx = Math.floor((m0.x - R) / T); tx <= Math.floor((m0.x + R) / T); tx++) for (var ty = Math.floor((m0.y - R) / T); ty <= Math.floor((m0.y + R) / T); ty++) (function (tx, ty) {
+      jobs.push(pmTile(Ly.url.replace('{z}', Z).replace('{x}', ((tx % max) + max) % max).replace('{y}', ty)).then(function (im) { return { im: im, x: tx * T + shx, y: ty * T + shy }; }));
+    })(tx, ty);
+    Promise.all(jobs).then(function (tiles) {
+      if (my !== padMapDraw.n) return;
+      g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#e8e4da'; g.fillRect(0, 0, W, W);
+      g.setTransform(A11, A21, A12, A22, c0[0] - A11 * m0.x - A12 * m0.y, c0[1] - A21 * m0.x - A22 * m0.y);
+      tiles.forEach(function (tl) { if (tl.im) g.drawImage(tl.im, tl.x, tl.y, T + 0.6, T + 0.6); });
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      // the recorded line, thin, so the drawing can follow it
+      var pts = st.track.filter(function (q, i) { return Math.abs(cum[i] - d) < 600; }).map(function (q) { return toC(toU(q[0], q[1])); });
+      g.strokeStyle = stageColor(st); g.globalAlpha = 0.8; g.lineWidth = Math.max(2, W / 160); g.lineJoin = g.lineCap = 'round'; g.beginPath();
+      pts.forEach(function (p, i) { if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); }); g.stroke(); g.globalAlpha = 1;
+    });
+  }
+  $('padMapBtn').onclick = function () { CFG.padMap = CFG.padMap === false; saveCfg(); padMapDraw(); };
+  $('padMapOp').oninput = function () { CFG.padMapOp = +this.value; $('padMap').style.opacity = this.value / 100; };
+  $('padMapOp').onchange = function () { saveCfg(); };
+  document.querySelector('.pad-mapctl').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pmz]'); if (!b) return;
+    CFG.padMapM = Math.max(30, Math.min(600, Math.round((CFG.padMapM || 120) * (+b.dataset.pmz > 0 ? 0.75 : 1.333)))); saveCfg(); padMapDraw();
+  });
   window.addEventListener('resize', padSize);
   function padTools() {
     $('padTool').querySelectorAll('[data-tool]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.tool === PD.tool); });

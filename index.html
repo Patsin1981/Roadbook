@@ -322,8 +322,13 @@
       <button type="button" data-tool="n" data-i18n="pad.thin"></button><button type="button" data-tool="k" data-i18n="pad.thick"></button>
       <button type="button" data-tool="line" data-i18n="pad.line"></button><button type="button" data-tool="erase" data-i18n="pad.erase"></button>
     </div>
+    <div class="pad-mapctl">
+      <button type="button" id="padMapBtn" aria-pressed="true" data-i18n="pad.map"></button>
+      <input type="range" id="padMapOp" min="15" max="100" step="5" aria-label="opacity">
+      <button type="button" data-pmz="-1" aria-label="zoom out">−</button><button type="button" data-pmz="1" aria-label="zoom in">+</button>
+    </div>
   </div>
-  <div class="pad-area" id="padArea"><div id="padBg"></div><svg id="padSvg" viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  <div class="pad-area" id="padArea"><canvas id="padMap"></canvas><div id="padBg"></div><svg id="padSvg" viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg"></svg></div>
   <div class="pad-bot">
     <button type="button" id="padUndo" data-i18n="pad.undo"></button><button type="button" id="padClear" data-i18n="pad.clear"></button>
     <button type="button" id="padSave" data-i18n="pad.save"></button>
