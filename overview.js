@@ -59,7 +59,7 @@
   function render(o) {
     var W = o.w, H = o.h, pad = o.pad || 80, L = LAYERS[o.layer] || LAYERS.osm, K = o.k || 1;
     var font = o.font || 'Barlow Condensed, Tahoma, sans-serif';
-    var all = o.lines ? [].concat.apply([], o.lines.map(function (l) { return l.track; })) : o.track;
+    var all = o.track || [].concat.apply([], o.lines.map(function (l) { return l.track; }));
     var lats = all.map(function (p) { return p[0]; }), lons = all.map(function (p) { return p[1]; });
     var n = Math.max.apply(null, lats), s = Math.min.apply(null, lats), e = Math.max.apply(null, lons), w = Math.min.apply(null, lons);
     // Map scale: the route fills the frame (less the margin kept for labels). Map zooms come in steps of x2, so take
@@ -151,7 +151,8 @@
         badgeBoxes.push({ x: p.x - r, y: p.y - hh, w: 2 * r, h: 2 * hh });
       });
       // labels
-      var items = (o.labels || []).map(function (l) {
+      // a mark outside the picture (e.g. the TC at the far end of a Free run joined to the SS) gets no label
+      var items = (o.labels || []).filter(function (l) { var q = px(l.lat, l.lon); return q.x >= 0 && q.y >= 0 && q.x <= W && q.y <= H; }).map(function (l) {
         var p = px(l.lat, l.lon);
         g.font = 'bold ' + 26 * K + 'px ' + font; var w1 = g.measureText(l.title).width;
         g.font = '600 ' + 20 * K + 'px ' + font; var w2 = l.sub ? g.measureText(l.sub).width : 0;

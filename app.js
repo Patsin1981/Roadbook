@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.8.0';
+  var APP_VER = '2.8.1';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -254,6 +254,28 @@
     if (r) { r.len = len; if (p.osm) r.side = sideRoads(st, p.osm, r.tf); delete r.tf; p.shape = r; } else { p.curve = 'sharp'; delete p.shape; }
   }
 
+  // An SS leg that carries road sections too (an SS merged with its Free run): only START → FINISH is the
+  // special stage; the road before the START and after the FINISH keeps the Free run colour.
+  // Returns [{track, color, ss}] pieces in driving order.
+  function legPieces(st) {
+    var tr = st.track, col = stageColor(st);
+    if (kindOf(st) !== 'ss' || tr.length < 2) return [{ track: tr, color: col, ss: kindOf(st) === 'ss' }];
+    var cum = cumOf(st), L0 = cum[cum.length - 1], ps = st.points || [];
+    var st0 = ps.filter(function (p) { return p.type === 'START'; }).map(function (p) { return p.d; });
+    var fin = ps.filter(function (p) { return p.type === 'FINISH'; }).map(function (p) { return p.d; });
+    var a = st0.length ? Math.min.apply(null, st0) : 0, b = fin.length ? Math.max.apply(null, fin) : L0;
+    if (b <= a) return [{ track: tr, color: col, ss: true }];
+    var cut = function (from, to) {
+      var out = [RB.pointAt(tr, cum, from)];
+      for (var i = 0; i < tr.length; i++) if (cum[i] > from && cum[i] < to) out.push(tr[i]);
+      out.push(RB.pointAt(tr, cum, to)); return out;
+    };
+    var road = KIND_COLOR.liaison, out = [];
+    if (a > 30) out.push({ track: cut(0, a), color: road, ss: false });
+    out.push({ track: a > 30 || b < L0 - 30 ? cut(a > 30 ? a : 0, b < L0 - 30 ? b : L0) : tr, color: col, ss: true });
+    if (b < L0 - 30) out.push({ track: cut(b, L0), color: road, ss: false });
+    return out;
+  }
   function drawTracks() {
     gTracks.clearLayers();
     // every leg in its WRC colour; where one leg ends away from where the next starts (recording paused at
@@ -273,7 +295,7 @@
       }
       if (st.id === S.stageId || only || !inBook(st)) return;
       L.polyline(st.track, { color: '#fff', weight: 6, opacity: .7, interactive: false }).addTo(gTracks);
-      L.polyline(st.track, { color: stageColor(st), weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks);
+      legPieces(st).forEach(function (pc) { L.polyline(pc.track, { color: pc.color, weight: 3.5, opacity: .85, interactive: false }).addTo(gTracks); });
       // Free run / service legs have no name tag; tapping the line shows the name for a moment
       if (kindOf(st) !== 'ss' && st.track.length > 1) L.polyline(st.track, { color: '#000', weight: 20, opacity: 0.01 }).on('click', function (e) {
         if (S.draw || S.edit || S.imgOff || S.addMode) return; // the tap belongs to the open tool
@@ -283,7 +305,7 @@
     var st = stage();
     if (st) {
       L.polyline(st.track, { color: '#fff', weight: 10, opacity: .95, interactive: false }).addTo(gTracks);
-      L.polyline(st.track, { color: stageColor(st), weight: 6, interactive: false }).addTo(gTracks);
+      legPieces(st).forEach(function (pc) { L.polyline(pc.track, { color: pc.color, weight: 6, interactive: false }).addTo(gTracks); });
     }
     drawArrows(); drawNames();
   }
@@ -2004,7 +2026,9 @@
     var bn = -90, bs = 90, be = -180, bw = 180;
     st.track.forEach(function (p) { bn = Math.max(bn, p[0]); bs = Math.min(bs, p[0]); be = Math.max(be, p[1]); bw = Math.min(bw, p[1]); });
     var my = (bn - bs) * 0.2 + 0.002, mx = (be - bw) * 0.2 + 0.002;
-    var opts = { track: st.track, labels: overviewLabels(st).concat(placeLabels({ n: bn + my, s: bs - my, e: be + mx, w: bw - mx })), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra, shift: sh ? { e: sh.e, n: sh.n } : null };
+    var pieces = legPieces(st);
+    var ssPiece = pieces.filter(function (pc) { return pc.ss; })[0]; // the picture frames the special stage itself
+    var opts = { track: pieces.length > 1 && ssPiece ? ssPiece.track : st.track, lines: pieces.length > 1 ? pieces.map(function (pc) { return { track: pc.track, color: pc.color, width: pc.ss ? 9 : 7 }; }) : null, labels: overviewLabels(st).concat(placeLabels({ n: bn + my, s: bs - my, e: be + mx, w: bw - mx })), color: stageColor(st), layer: S.sat ? 'sat' : 'osm', w: w, h: h, extra: extra, shift: sh ? { e: sh.e, n: sh.n } : null };
     var fontReady = document.fonts && document.fonts.load ? document.fonts.load('bold 26px "Barlow Condensed"').catch(function () {}) : Promise.resolve();
     return fontReady.then(function () { return RBO.render(opts); }).then(function (cv) {
       try { cv.toDataURL('image/png'); return cv; } // a tile without CORS would block reading the picture
@@ -2066,7 +2090,11 @@
       fit = Math.min(1, (LONG - 2 * PAD) / Math.max(span, 1));
       var Wm = Math.round(Math.max((b.x - a.x) * fit + 2 * PAD, LONG * 0.55)), Hm = Math.round(Math.max((b.y - a.y) * fit + 2 * PAD, LONG * 0.55));
       var K = Math.max(Wm, Hm) / 2600; // text and lines grow with the picture so they read the same when zoomed
-      var lines = legs.map(function (st, i) { return { track: st.track, color: colorOf(st, i), width: kindOf(st) === 'ss' ? 9 : 6 }; });
+      var lines = [];
+      legs.forEach(function (st, i) {
+        var pcs = style === 'num' ? legPieces(st) : [{ track: st.track, color: colorOf(st, i), ss: kindOf(st) === 'ss' }];
+        pcs.forEach(function (pc) { lines.push({ track: pc.track, color: pc.color, width: pc.ss ? 9 : 6 }); });
+      });
       // the running number on each leg, in the middle and every ~5 km; a leg driven twice (same road) shows both numbers
       var badges = [], same = function (a, b) {
         var la = lenOf(a), lb = lenOf(b);
