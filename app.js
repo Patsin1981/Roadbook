@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.8.3';
+  var APP_VER = '2.8.4';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -624,8 +624,31 @@
     selectStage(this.value, true);
   };
   // one picker for both kinds of file: route files (.gpx) and backup files (.json)
-  $('inAny').onchange = function () {
-    var list = Array.prototype.slice.call(this.files || []); this.value = '';
+  $('inAny').onchange = function () { var list = Array.prototype.slice.call(this.files || []); this.value = ''; importAnyFiles(list); };
+  // files shared to the app from LINE / Files / Drive arrive through the service worker (share target)
+  if (/[?&]shared=1/.test(location.search) && window.caches) {
+    history.replaceState(null, '', location.pathname);
+    caches.open('rb-share').then(function (c) {
+      return c.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) {
+          return c.match(k).then(function (r) { return r.blob().then(function (b) { return new File([b], decodeURIComponent(r.headers.get('x-name') || 'shared'), { type: b.type }); }); });
+        })).then(function (files) { return caches.delete('rb-share').then(function () { return files; }); });
+      });
+    }).then(function (files) {
+      if (!files.length) return toast(t('share.none'), 4000);
+      setTimeout(function () { importAnyFiles(files); }, 300);
+    }).catch(function () { toast(t('share.none'), 4000); });
+  }
+  function importAnyFiles(list) {
+    // a shared file may come without a usual name: look inside, a backup starts with "{"
+    var odd = list.filter(function (f) { return !/\.(json|gpx|kml|kmz)$/i.test(f.name); });
+    if (odd.length) {
+      return Promise.all(odd.map(function (f) { return f.slice(0, 200).text().then(function (x) { return { f: f, json: /^\s*\{/.test(x) }; }); })).then(function (r) {
+        var rest = list.filter(function (f) { return odd.indexOf(f) < 0; });
+        r.forEach(function (x) { rest.push(x.json ? new File([x.f], (x.f.name || 'shared') + '.json') : x.f); });
+        importAnyFiles(rest.filter(function (f) { return /\.(json|gpx|kml|kmz)$/i.test(f.name) || odd.indexOf(f) >= 0; }).map(function (f) { return /\.(json|gpx|kml|kmz)$/i.test(f.name) ? f : new File([f], f.name + '.gpx'); }));
+      });
+    }
     var backups = list.filter(function (f) { return /\.json$/i.test(f.name); }), gpx = list.filter(function (f) { return !/\.json$/i.test(f.name); }); // gpx, kml or kmz
     if (gpx.length) importGpxFiles(gpx);
     if (backups.length) {

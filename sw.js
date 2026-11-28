@@ -1,5 +1,5 @@
 /* Rally Roadbook service worker */
-var VER = '2.8.3';
+var VER = '2.8.4';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'core.js', 'i18n.js', 'symbols.js', 'overview.js', 'photos.js', 'export-xlsx.js', 'vendor/exceljs/exceljs.min.js', 'manifest.webmanifest',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png', 'vendor/leaflet/images/marker-icon.png', 'vendor/leaflet/images/marker-icon-2x.png', 'vendor/leaflet/images/marker-shadow.png',
@@ -35,7 +35,20 @@ function trimTiles() {
 }
 
 self.addEventListener('fetch', function (e) {
-  var req = e.request; if (req.method !== 'GET') return;
+  var req = e.request;
+  // a file shared to the app from another app (LINE, Files, Drive …): keep it for the page, then open the app
+  if (req.method === 'POST' && /\/share-target\/?$/.test(new URL(req.url).pathname)) {
+    e.respondWith(req.formData().then(function (fd) {
+      var files = fd.getAll('file').filter(function (f) { return f && f.size; });
+      return caches.open('rb-share').then(function (c) {
+        return Promise.all(files.map(function (f, i) {
+          return c.put('./share-in/' + i, new Response(f, { headers: { 'x-name': encodeURIComponent(f.name || ('shared-' + i)), 'content-type': f.type || 'application/octet-stream' } }));
+        }));
+      });
+    }).catch(function () {}).then(function () { return Response.redirect('./index.html?shared=1', 303); }));
+    return;
+  }
+  if (req.method !== 'GET') return;
   var url = new URL(req.url);
   if (isTile(url)) {
     // Map tiles: use cached copy first (works offline in areas viewed before), refresh from network otherwise
