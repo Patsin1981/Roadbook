@@ -187,9 +187,11 @@
 </main>
 
 <!-- Point editor -->
-<dialog id="ptDlg">
+<dialog id="ptDlg" class="sheet">
   <form method="dialog" class="dlg">
+    <button type="button" class="sheet-grab" id="ptGrab" aria-label="resize"></button>
     <div class="dlg-head">
+      <button type="button" id="ptMini" class="mini-btn" data-i18n="pt.viewMap"></button>
       <div class="dlg-km"><span id="ptKm">0.00</span> km</div>
       <div class="nudge">
         <button type="button" data-nudge="-10">−10</button>

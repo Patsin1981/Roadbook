@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var APP_VER = '2.8.5';
+  var APP_VER = '2.9.0';
   var KEY = 'rb.project.v1', NKEY = 'rb.nav.v1', RKEY = 'rb.rec.v1', LKEY = 'rb.lang', SKEY = 'rb.settings.v1', MKEY = 'rb.meta.v1';
   var COLORS = ['#0050B3', '#D0021B', '#007A3D', '#7A3EB1', '#E07000', '#00838F'];
   var TYPES = ['START', 'TULIP', 'TC', 'PC', 'CP', 'DANGER', 'INFO', 'FINISH', 'SVCIN', 'SVCOUT', 'PFIN', 'PFOUT', 'RGIN', 'RGOUT'];
@@ -223,6 +223,7 @@
   };
 
   map.on('click', function (e) {
+    if ($('ptDlg').open) return; // the box editor is open: the map is only for looking
     if (S.mode !== 'org') return;
     if (S.draw) return drawAdd(e.latlng.lat, e.latlng.lng);
     if (S.edit) return editTap(e.latlng);
@@ -1242,6 +1243,7 @@
   $('ptOsm').onclick = fetchSideRoads;
   $('ptOsmClear').onclick = function () { if (!D) return; delete D.osm; if (D.shape) delete D.shape.side; $('ptOsmMsg').textContent = ''; syncDlg(); };
   function openPoint(p, isNew) {
+    if ($('ptDlg').open) { if (D && Dorig === p) return; return toast(t('pt.busy'), 2500); } // one box at a time
     Dsel = -1; drag = null; $('ptStkPick').hidden = true; $('ptOsmMsg').textContent = ''; if ($('pad').open) $('pad').close(); PD = null;
     Dorig = p; Dnew = isNew; D = JSON.parse(JSON.stringify(p)); D.branches = D.branches || []; D.code = D.code || ''; D.time = D.time || '';
     DautoCode = isNew && !!D.code;
@@ -1250,8 +1252,28 @@
     $('ptSplit').hidden = isNew;
     $('ptSymWrap').open = !!(D.sym && D.sym.length);
     D.photos = D.photos || []; renderPtPhotos();
-    syncDlg(); showDraft(); $('ptDlg').showModal();
+    syncDlg(); showDraft();
+    // not modal: the map stays usable (pan, zoom) next to / above the editor; the box is brought into view
+    var dlg = $('ptDlg'); dlg.classList.remove('mini', 'sheet-full'); $('ptMini').textContent = t('pt.viewMap');
+    var hd = document.querySelector('header'); dlg.style.top = innerWidth >= 900 && hd ? Math.round(hd.getBoundingClientRect().bottom) + 'px' : '';
+    dlg.show(); dlg.scrollTop = 0;
+    requestAnimationFrame(function () { ptReveal(D); });
   }
+  // put the box in the middle of the part of the map the editor does not cover
+  function ptReveal(p) {
+    if (!p || !$('ptDlg').open) return;
+    var mr = map.getContainer().getBoundingClientRect(), dr = $('ptDlg').getBoundingClientRect();
+    var x0 = mr.left, x1 = mr.right, y0 = mr.top, y1 = mr.bottom;
+    if (!$('ptDlg').classList.contains('mini')) {
+      if (dr.top > mr.top + 40 && dr.left <= mr.left + 10) y1 = Math.min(y1, dr.top);   // bottom sheet
+      else if (dr.left > mr.left + 40) x1 = Math.min(x1, dr.left);                        // side panel
+    }
+    var want = L.point((x0 + x1) / 2 - mr.left, (y0 + y1) / 2 - mr.top), now = map.latLngToContainerPoint([p.lat, p.lon]);
+    map.panBy(now.subtract(want), { animate: true, duration: 0.3 });
+  }
+  $('ptMini').onclick = function () { var d = $('ptDlg'); d.classList.toggle('mini'); d.classList.remove('sheet-full'); this.textContent = t(d.classList.contains('mini') ? 'pt.back' : 'pt.viewMap'); };
+  $('ptGrab').onclick = function () { var d = $('ptDlg'); if (d.classList.contains('mini')) return $('ptMini').click(); d.classList.toggle('sheet-full'); };
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('ptDlg').open && !document.querySelector('dialog[open]:modal')) $('ptDlg').close(); });
   function showDraft() {
     if (draftMarker) map.removeLayer(draftMarker);
     draftMarker = L.circleMarker([D.lat, D.lon], { radius: 9, color: '#D0021B', weight: 3, fillOpacity: 0 }).addTo(map);
